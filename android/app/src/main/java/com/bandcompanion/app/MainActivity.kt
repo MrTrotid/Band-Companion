@@ -56,15 +56,22 @@ import com.bandcompanion.core.bluetooth.DiscoveredBand
 import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
 import com.bandcompanion.core.database.AppDatabase
 import com.bandcompanion.core.database.repository.DeviceRepository
+import com.bandcompanion.core.database.repository.MoodRepository
 import com.bandcompanion.core.database.repository.SampleRepository
 import com.bandcompanion.core.database.repository.SleepRepository
 import com.bandcompanion.core.database.repository.SummaryRepository
+import com.bandcompanion.core.database.repository.WeightRepository
 import com.bandcompanion.core.model.DeviceInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -73,6 +80,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var summaryRepo: SummaryRepository
     private lateinit var sleepRepo: SleepRepository
     private lateinit var sampleRepo: SampleRepository
+    private lateinit var moodRepo: MoodRepository
+    private lateinit var weightRepo: WeightRepository
     private lateinit var exportManager: ExportManager
     private lateinit var bleScanner: BleScanner
     private lateinit var bleManager: BleConnectionManager
@@ -94,6 +103,8 @@ class MainActivity : ComponentActivity() {
         summaryRepo = SummaryRepository(database.summaryDao())
         sleepRepo = SleepRepository(database.sleepDao())
         sampleRepo = SampleRepository(database.sampleDao())
+        moodRepo = MoodRepository(database.moodDao())
+        weightRepo = WeightRepository(database.weightDao())
         exportManager = ExportManager(this, sampleRepo, sleepRepo, summaryRepo)
         bleScanner = BleScanner(this)
         bleManager = BleConnectionManager.getInstance(this)
@@ -107,6 +118,8 @@ class MainActivity : ComponentActivity() {
                     summaryRepo = summaryRepo,
                     sleepRepo = sleepRepo,
                     sampleRepo = sampleRepo,
+                    moodRepo = moodRepo,
+                    weightRepo = weightRepo,
                     exportManager = exportManager,
                     bleScanner = bleScanner,
                     bleManager = bleManager,
@@ -175,6 +188,8 @@ fun MainAppContent(
     summaryRepo: SummaryRepository,
     sleepRepo: SleepRepository,
     sampleRepo: SampleRepository,
+    moodRepo: MoodRepository,
+    weightRepo: WeightRepository,
     exportManager: ExportManager,
     bleScanner: BleScanner,
     bleManager: BleConnectionManager,
@@ -200,9 +215,26 @@ fun MainAppContent(
     val primaryDevice by deviceRepo.getPrimaryDeviceFlow().collectAsState(initial = null)
     val devId = primaryDevice?.macAddress ?: "C4:16:88:8D:04:EF"
 
-    val todaySummary by summaryRepo.getSummaryForDate(devId, "2026-10-12").collectAsState(initial = null)
+    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val todayMidnight = remember {
+        val c = Calendar.getInstance()
+        c.set(Calendar.HOUR_OF_DAY, 0)
+        c.set(Calendar.MINUTE, 0)
+        c.set(Calendar.SECOND, 0)
+        c.set(Calendar.MILLISECOND, 0)
+        c.timeInMillis
+    }
+    val now = remember { System.currentTimeMillis() }
+
+    val todaySummary by summaryRepo.getSummaryForDate(devId, todayStr).collectAsState(initial = null)
     val recentSummaries by summaryRepo.getRecentSummaries(devId, 30).collectAsState(initial = emptyList())
     val latestSleepSession by sleepRepo.getLatestSleepSession(devId).collectAsState(initial = null)
+    val latestMood by moodRepo.getLatestMood(devId).collectAsState(initial = null)
+    val latestWeight by weightRepo.getLatestEntry().collectAsState(initial = null)
+    val todaySamples by sampleRepo.getSamplesBetween(devId, todayMidnight, now).collectAsState(initial = emptyList())
+    val currentPulse by bleManager.protocolHandler.fitnessDataFlow
+        .map { list -> list.lastOrNull { it.heartRate != null }?.heartRate }
+        .collectAsState(initial = null)
 
     if (isPairingOpen) {
         PairingScreen(
@@ -351,14 +383,35 @@ fun MainAppContent(
                 NavigationTab.DASHBOARD -> DashboardScreen(
                     deviceInfo = primaryDevice,
                     todaySummary = todaySummary,
+                    latestSleepSession = latestSleepSession,
+                    latestMood = latestMood,
+                    latestWeight = latestWeight,
+                    hrSamples = todaySamples,
+                    currentPulseBpm = currentPulse,
                     isSyncing = isSyncing,
                     onSyncClick = {
                         isSyncing = true
                         onSyncRequested()
+                        coroutineScope.launch {
+                            delay(3000)
+                            isSyncing = false
+                        }
                     },
                     onPairClick = {
                         isPairingOpen = true
                         bleScanner.startScan()
+                    },
+                    onLogMood = { mood, energy, note ->
+                        coroutineScope.launch {
+                            moodRepo.logMood(devId, mood, energy, note)
+                            Toast.makeText(context, "Mood logged: $mood", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onLogWeight = { weight, height, note ->
+                        coroutineScope.launch {
+                            weightRepo.logWeight(weight, height, note)
+                            Toast.makeText(context, "Weight logged: %.1f kg".format(weight), Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
                 NavigationTab.SLEEP -> SleepDetailScreen(
