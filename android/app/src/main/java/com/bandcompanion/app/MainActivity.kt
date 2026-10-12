@@ -183,7 +183,11 @@ fun MainAppContent(
     var isPairingOpen by remember { mutableStateOf(false) }
     var pairingStatusText by remember { mutableStateOf<String?>(null) }
     var isWaitingForWatchCheckmark by remember { mutableStateOf(false) }
+    var isAwaitingWatchFaceConfirmation by remember { mutableStateOf(false) }
     var userConfirmationDeferred by remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
+    var pendingPairedDevice by remember { mutableStateOf<DeviceInfo?>(null) }
+    var pendingAuthKeyHex by remember { mutableStateOf<String?>(null) }
+    var pendingSecretKeyHex by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -204,11 +208,33 @@ fun MainAppContent(
             isScanning = isScanning,
             pairingStatusText = pairingStatusText,
             isWaitingForWatchCheckmark = isWaitingForWatchCheckmark,
+            isAwaitingWatchFaceConfirmation = isAwaitingWatchFaceConfirmation,
             onStartScan = { bleScanner.startScan() },
             onConfirmCheckmark = { userConfirmationDeferred?.complete(Unit) },
+            onFinishPairing = {
+                coroutineScope.launch {
+                    val dev = pendingPairedDevice
+                    if (dev != null) {
+                        deviceRepo.saveDevice(dev, pendingAuthKeyHex, pendingSecretKeyHex)
+                        onStartService()
+                        Toast.makeText(context, "🎉 Huawei Band paired successfully!", Toast.LENGTH_LONG).show()
+                    }
+                    isPairingOpen = false
+                    isAwaitingWatchFaceConfirmation = false
+                    pairingStatusText = null
+                    pendingPairedDevice = null
+                }
+            },
+            onResendActivation = {
+                coroutineScope.launch {
+                    Toast.makeText(context, "Resending watch face activation...", Toast.LENGTH_SHORT).show()
+                    bleManager.protocolHandler.sendDismissPairingScreen()
+                }
+            },
             onSelectDevice = { selectedBand ->
                 coroutineScope.launch {
                     bleScanner.stopScan()
+                    isAwaitingWatchFaceConfirmation = false
                     pairingStatusText = "Connecting to ${selectedBand.name}..."
                     bleManager.connect(selectedBand.macAddress)
 
@@ -227,10 +253,10 @@ fun MainAppContent(
                         return@launch
                     }
 
-                    pairingStatusText = "Authenticating with Band..."
-                    val storedCreds = deviceRepo.getDeviceCredentials(selectedBand.macAddress)
+                    pairingStatusText = "Starting pairing handshake..."
                     val success = bleManager.protocolHandler.authenticateHandshake(
-                        storedAuthKeyHex = storedCreds.first,
+                        storedAuthKeyHex = null,
+                        forceFirstAuth = true,
                         onStepUpdate = { status ->
                             pairingStatusText = status
                             if (status.contains("TAP CHECKMARK", ignoreCase = true)) {
@@ -254,8 +280,8 @@ fun MainAppContent(
                         bleManager.protocolHandler.executePostAuthBootstrap { status ->
                             pairingStatusText = status
                         }
+                        bleManager.initiateBond()
                         isWaitingForWatchCheckmark = false
-                        pairingStatusText = "Paired! Saving credentials..."
 
                         val secretKeyHex = bleManager.protocolHandler.cachedSecretKey?.let { HiChain3Crypto.bytesToHex(it) }
                         val authKeyHex = bleManager.protocolHandler.cachedAuthKey?.let { HiChain3Crypto.bytesToHex(it) }
@@ -268,15 +294,16 @@ fun MainAppContent(
                             batteryLevel = bleManager.protocolHandler.batteryLevel.value ?: 92,
                             lastSyncTimestamp = System.currentTimeMillis()
                         )
-                        deviceRepo.saveDevice(newDev, authKeyHex, secretKeyHex)
+                        pendingPairedDevice = newDev
+                        pendingAuthKeyHex = authKeyHex
+                        pendingSecretKeyHex = secretKeyHex
 
-                        onStartService()
-                        Toast.makeText(context, "Huawei Band paired successfully!", Toast.LENGTH_LONG).show()
-                        delay(1200)
-                        isPairingOpen = false
+                        // Keep PairingScreen open until the watch screen shows active watch face!
+                        isAwaitingWatchFaceConfirmation = true
                         pairingStatusText = null
                     } else {
                         isWaitingForWatchCheckmark = false
+                        isAwaitingWatchFaceConfirmation = false
                         pairingStatusText = "Pairing timed out. Please try again."
                     }
                 }
@@ -284,6 +311,7 @@ fun MainAppContent(
             onBackClick = {
                 bleScanner.stopScan()
                 isPairingOpen = false
+                isAwaitingWatchFaceConfirmation = false
                 pairingStatusText = null
             }
         )

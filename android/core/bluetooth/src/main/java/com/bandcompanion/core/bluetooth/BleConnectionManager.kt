@@ -8,7 +8,10 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
@@ -72,12 +75,83 @@ class BleConnectionManager(
         )
     }
 
+    private var isPairingReceiverRegistered = false
+    private val pairingReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BluetoothDevice.ACTION_PAIRING_REQUEST) {
+                val dev = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+                val currentMac = bluetoothGatt?.device?.address
+                if (dev != null && currentMac != null && dev.address.equals(currentMac, ignoreCase = true)) {
+                    Log.i(TAG, "ACTION_PAIRING_REQUEST intercepted for ${dev.address}: auto-confirming pairing")
+                    try {
+                        dev.setPairingConfirmation(true)
+                        abortBroadcast()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "setPairingConfirmation failed: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    fun registerPairingReceiver() {
+        if (!isPairingReceiverRegistered) {
+            val filter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST).apply {
+                priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(pairingReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                context.registerReceiver(pairingReceiver, filter)
+            }
+            isPairingReceiverRegistered = true
+            Log.i(TAG, "registerPairingReceiver: registered high-priority pairing request receiver")
+        }
+    }
+
+    fun unregisterPairingReceiver() {
+        if (isPairingReceiverRegistered) {
+            try {
+                context.unregisterReceiver(pairingReceiver)
+            } catch (e: Exception) {
+                Log.w(TAG, "unregisterPairingReceiver error: ${e.message}")
+            }
+            isPairingReceiverRegistered = false
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun initiateBond(): Boolean {
+        val dev = bluetoothGatt?.device ?: return false
+        val state = dev.bondState
+        Log.i(TAG, "initiateBond: device=${dev.address}, bondState=$state")
+        return if (state == BluetoothDevice.BOND_NONE) {
+            dev.createBond()
+        } else {
+            true
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun isDeviceBonded(): Boolean {
+        val dev = bluetoothGatt?.device ?: return false
+        return dev.bondState == BluetoothDevice.BOND_BONDED
+    }
+
     @SuppressLint("MissingPermission")
     fun connect(macAddress: String) {
         if (bluetoothGatt != null && (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.SERVICES_DISCOVERED)) {
             Log.i(TAG, "connect: Already connected to $macAddress with active GATT, reusing connection.")
             return
         }
+
+        registerPairingReceiver()
 
         val adapter = BluetoothAdapter.getDefaultAdapter() ?: run {
             Log.e(TAG, "BluetoothAdapter is null!")
@@ -94,6 +168,7 @@ class BleConnectionManager(
     @SuppressLint("MissingPermission")
     fun disconnect() {
         Log.i(TAG, "Disconnecting GATT...")
+        unregisterPairingReceiver()
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null

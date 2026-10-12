@@ -635,9 +635,12 @@ class BandProtocolHandler(
 
     /**
      * Unified entry point for initial pairing (with watch checkmark) or fast reconnect.
+     * When forceFirstAuth is true (e.g. from PairingScreen), clears cached credentials and
+     * mandates opCode=1 so the watch displays the on-screen checkmark prompt.
      */
     suspend fun authenticateHandshake(
         storedAuthKeyHex: String? = null,
+        forceFirstAuth: Boolean = false,
         onStepUpdate: (String) -> Unit = {},
         onUserPrompt: suspend () -> Unit = {}
     ): Boolean {
@@ -650,12 +653,15 @@ class BandProtocolHandler(
         onStepUpdate("Negotiating security protocol...")
         val authType = negotiateSecurity()
 
-        if (storedAuthKeyHex != null) {
+        if (!forceFirstAuth && storedAuthKeyHex != null) {
             cachedAuthKey = HiChain3Crypto.hexToBytes(storedAuthKeyHex)
+        } else if (forceFirstAuth) {
+            cachedAuthKey = null
+            cachedSecretKey = null
         }
 
-        return if (authType == 0x05 || cachedAuthKey == null) {
-            Log.i(TAG, "authenticateHandshake: First-auth mode (authType=0x${Integer.toHexString(authType)}): requesting PIN...")
+        return if (forceFirstAuth || authType == 0x05 || cachedAuthKey == null) {
+            Log.i(TAG, "authenticateHandshake: First-auth mode (authType=0x${Integer.toHexString(authType)}, forceFirstAuth=$forceFirstAuth): requesting PIN...")
             onStepUpdate("Requesting pairing PIN...")
             val pin = getPinCode() ?: run {
                 Log.e(TAG, "authenticateHandshake: Failed to retrieve PIN from band!")
@@ -735,15 +741,49 @@ class BandProtocolHandler(
     }
 
     /**
+     * Sends an encrypted TLV payload over BLE without waiting for a reply.
+     * Matches tools/connect.py `_send_encrypted_no_wait` (used for CMD_SETUP_DEVICE_STATUS).
+     */
+    suspend fun sendEncryptedNoWait(
+        serviceId: Int,
+        commandId: Int,
+        plainPayload: ByteArray = ByteArray(0)
+    ): Boolean {
+        return try {
+            val encryptedPayload = encryptTransactionTlv(plainPayload)
+            val frames = Lpv2Frame.makeFrames(serviceId, commandId, encryptedPayload, sliceSize)
+            for (f in frames) {
+                val sent = sendRawBytes(f)
+                if (!sent) return false
+                delay(20L)
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "sendEncryptedNoWait failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Dispatches CMD_CONNECT_STATUS (0x01/0x35) with tag 0x01 = 0x01.
+     * Commands Huawei Band firmware to transition from pairing mode to the active watch face.
+     */
+    suspend fun sendDismissPairingScreen(): Boolean {
+        val connectStatusPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+        val resp = transactEncrypted(SVC_BASE, CMD_CONNECT_STATUS, connectStatusPayload, timeoutMs = 5000)
+        Log.i(TAG, "sendDismissPairingScreen: response=${resp?.keys}")
+        return resp != null
+    }
+
+    /**
      * Executes Post-Auth Connected Bootstrap matching tools/connect.py:
-     * 1. Accepts mandatory agreements (CMD_ACCEPT_AGREEMENT 0x01/0x30)
-     * 2. Sets reverse capabilities (CMD_REVERSE_CAPABILITIES 0x01/0x3F)
-     * 3. Sets up device status (CMD_SETUP_DEVICE_STATUS 0x01/0x3E)
-     * 4. Dispatches CMD_CONNECT_STATUS (0x01/0x35) -> Commands band to switch to active watch face!
-     * 5. Queries product info (CMD_PRODUCT 0x01/0x07)
-     * 6. Dispatches CMD_TIME_SYNC (0x01/0x02) with timezone offset
-     * 7. Queries battery percentage (CMD_BATTERY 0x01/0x08)
-     * 8. Waits for watch AMOLED screen animation to complete before finishing
+     * 1. Product info query (CMD_PRODUCT 0x01/0x07)
+     * 2. Time Sync (CMD_TIME_SYNC 0x01/0x02) with timezone offset
+     * 3. Battery query (CMD_BATTERY 0x01/0x08)
+     * 4. Mandatory legal agreement acceptance (CMD_ACCEPT_AGREEMENT 0x01/0x30)
+     * 5. Reverse capabilities announcement (CMD_REVERSE_CAPABILITIES 0x01/0x3F)
+     * 6. Setup device status (CMD_SETUP_DEVICE_STATUS 0x01/0x3E) via sendEncryptedNoWait (no blocking)
+     * 7. Final CMD_CONNECT_STATUS (0x01/0x35) -> Activates watch face and dismisses pairing UI on band!
      */
     suspend fun executePostAuthBootstrap(
         onStepUpdate: (String) -> Unit = {}
@@ -751,7 +791,32 @@ class BandProtocolHandler(
         Log.i(TAG, "executePostAuthBootstrap: starting Huawei connected-state bootstrap...")
         onStepUpdate("Pairing confirmed! Configuring watch...")
 
-        // 1. Accept mandatory agreements (svc=0x01, cmd=0x30)
+        // 1. Product info query (svc=0x01, cmd=0x07)
+        try {
+            val productTags = byteArrayOf(0x01, 0x02, 0x07, 0x09, 0x0A, 0x11)
+            var prodTlv = ByteArray(0)
+            for (t in productTags) {
+                prodTlv += VarIntTlv.encode(t.toInt(), ByteArray(0))
+            }
+            transactEncrypted(SVC_BASE, CMD_PRODUCT, prodTlv, timeoutMs = 4000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Product query non-fatal error: ${e.message}")
+        }
+
+        // 2. Time Sync (svc=0x01, cmd=0x02)
+        try {
+            val nowSec = (System.currentTimeMillis() / 1000).toInt()
+            val tzBytes = getTimezoneOffsetBytes()
+            val timePayload = VarIntTlv.encode(0x01, nowSec) + VarIntTlv.encode(0x02, tzBytes)
+            transactEncrypted(SVC_BASE, CMD_TIME_SYNC, timePayload, timeoutMs = 5000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Time sync error: ${e.message}")
+        }
+
+        // 3. Battery query (svc=0x01, cmd=0x08)
+        queryBattery()
+
+        // 4. Accept mandatory agreements (svc=0x01, cmd=0x30)
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_ACCEPT_AGREEMENT (cmd=0x30)...")
         try {
             val timestamp = System.currentTimeMillis().toString().toByteArray(Charsets.UTF_8)
@@ -776,7 +841,7 @@ class BandProtocolHandler(
             Log.w(TAG, "CMD_ACCEPT_AGREEMENT error: ${e.message}")
         }
 
-        // 2. Send Reverse Capabilities (svc=0x01, cmd=0x3F)
+        // 5. Send Reverse Capabilities (svc=0x01, cmd=0x3F)
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_REVERSE_CAPABILITIES (cmd=0x3F)...")
         try {
             val revCapPayload = VarIntTlv.encode(0x01, byteArrayOf(0xFD.toByte(), 0xF7.toByte(), 0x73, 0x7A))
@@ -785,50 +850,26 @@ class BandProtocolHandler(
             Log.w(TAG, "CMD_REVERSE_CAPABILITIES error: ${e.message}")
         }
 
-        // 3. Setup Device Status (svc=0x01, cmd=0x3E)
-        Log.i(TAG, "executePostAuthBootstrap: sending CMD_SETUP_DEVICE_STATUS (cmd=0x3E)...")
+        // 6. Setup Device Status (svc=0x01, cmd=0x3E) via sendEncryptedNoWait (matches tools/connect.py)
+        Log.i(TAG, "executePostAuthBootstrap: sending CMD_SETUP_DEVICE_STATUS (cmd=0x3E) no-wait...")
         try {
             val setupDevPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) +
                     VarIntTlv.encode(0x02, "HUAWEI Band 10") +
                     VarIntTlv.encode(0x03, byteArrayOf(0x00))
-            transactEncrypted(SVC_BASE, CMD_SETUP_DEVICE_STATUS, setupDevPayload, timeoutMs = 8000)
+            sendEncryptedNoWait(SVC_BASE, CMD_SETUP_DEVICE_STATUS, setupDevPayload)
+            delay(100L)
         } catch (e: Exception) {
             Log.w(TAG, "CMD_SETUP_DEVICE_STATUS error: ${e.message}")
         }
 
-        // 4. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Dismisses the pairing screen on band!
-        Log.i(TAG, "executePostAuthBootstrap: sending CMD_CONNECT_STATUS (dismiss watch pairing screen)...")
+        // 7. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Triggers watch screen to display active watch face!
+        Log.i(TAG, "executePostAuthBootstrap: sending CMD_CONNECT_STATUS (activate watch face)...")
         val connectStatusPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
         val connectResp = transactEncrypted(SVC_BASE, CMD_CONNECT_STATUS, connectStatusPayload, timeoutMs = 5000)
         Log.i(TAG, "executePostAuthBootstrap: CMD_CONNECT_STATUS response: ${connectResp?.keys}")
 
-        // 5. Product info query (svc=0x01, cmd=0x07)
-        try {
-            val productTags = byteArrayOf(0x01, 0x02, 0x07, 0x09, 0x0A, 0x11)
-            var prodTlv = ByteArray(0)
-            for (t in productTags) {
-                prodTlv += VarIntTlv.encode(t.toInt(), ByteArray(0))
-            }
-            transactEncrypted(SVC_BASE, CMD_PRODUCT, prodTlv, timeoutMs = 4000)
-        } catch (e: Exception) {
-            Log.w(TAG, "Product query non-fatal error: ${e.message}")
-        }
-
-        // 6. Time Sync (svc=0x01, cmd=0x02)
-        val nowSec = (System.currentTimeMillis() / 1000).toInt()
-        val tzBytes = getTimezoneOffsetBytes()
-        val timePayload = VarIntTlv.encode(0x01, nowSec) + VarIntTlv.encode(0x02, tzBytes)
-        transactEncrypted(SVC_BASE, CMD_TIME_SYNC, timePayload, timeoutMs = 5000)
-
-        // 7. Battery query (svc=0x01, cmd=0x08)
-        queryBattery()
-
-        // 8. Allow 3.0 seconds for watch AMOLED screen animation to complete and display watch face
-        onStepUpdate("Watch display ready! Finishing up...")
-        delay(3000L)
-
         _authState.value = AuthState.AUTHENTICATED
-        Log.i(TAG, "executePostAuthBootstrap: bootstrap complete! Watch has dismissed pairing screen.")
+        Log.i(TAG, "executePostAuthBootstrap: bootstrap complete! Activation signal sent.")
         return true
     }
 

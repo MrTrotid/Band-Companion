@@ -76,9 +76,10 @@ class Lpv2ProtocolTest {
 
         // Feed into reassembler
         val reassembler = Lpv2Frame.Reassembler()
-        val parsed = reassembler.feed(frame)
-        assertNotNull(parsed)
-        assertEquals(0x01, parsed!!.serviceId)
+        val parsedList = reassembler.feed(frame)
+        assertEquals(1, parsedList.size)
+        val parsed = parsedList.first()
+        assertEquals(0x01, parsed.serviceId)
         assertEquals(0x01, parsed.commandId)
         assertEquals("HELLO", String(parsed.tlvs[0x01]!!, StandardCharsets.UTF_8))
     }
@@ -93,8 +94,7 @@ class Lpv2ProtocolTest {
             serviceId = 0x2C,
             commandId = 0x01,
             tlvPayload = tlvPayload,
-            sliceSize = 128,
-            seqFlag = 42
+            sliceSize = 128
         )
 
         assertTrue("Should produce multiple frames for 600-byte payload with 128 slice size", frames.size >= 5)
@@ -116,8 +116,8 @@ class Lpv2ProtocolTest {
         var completedPacket: Lpv2Frame.ParsedPacket? = null
         for (f in frames) {
             val result = reassembler.feed(f)
-            if (result != null) {
-                completedPacket = result
+            if (result.isNotEmpty()) {
+                completedPacket = result.first()
             }
         }
 
@@ -125,6 +125,29 @@ class Lpv2ProtocolTest {
         assertEquals(0x2C, completedPacket!!.serviceId)
         assertEquals(0x01, completedPacket.commandId)
         assertArrayEquals(largeData, completedPacket.tlvs[0x01])
+    }
+
+    @Test
+    fun testHkdfSha256MatchesPythonReferenceVector() {
+        val ikm = "1234567812345678".toByteArray(StandardCharsets.UTF_8)
+        val salt = "salt1234salt1234".toByteArray(StandardCharsets.UTF_8)
+        val info = "test_info".toByteArray(StandardCharsets.UTF_8)
+
+        val derived = HiChain3Crypto.hkdfSha256(ikm, salt, info, 32)
+        val hex = HiChain3Crypto.bytesToHex(derived).lowercase()
+        assertEquals("781250b00beccaa5a67f9108aca67457f45fdea126481e30bd9d59b38edd1704", hex)
+    }
+
+    @Test
+    fun testAesCbcEncryptAndDecryptRoundTrip() {
+        val key = HiChain3Crypto.hexToBytes("49796806333bec48d7b38ed167fe2cca10f319f70c073e17efb5ec8a58a40b45")
+        val iv = ByteArray(16) { it.toByte() }
+        val plaintext = "Huawei Band 10 Encrypted Payload Test".toByteArray(StandardCharsets.UTF_8)
+
+        val ciphertext = HiChain3Crypto.aesCbcEncrypt(plaintext, key, iv)
+        val decrypted = HiChain3Crypto.aesCbcDecrypt(ciphertext, key, iv)
+
+        assertArrayEquals(plaintext, decrypted)
     }
 
     @Test

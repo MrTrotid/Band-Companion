@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bandcompanion.app.ui.theme.ElectricCyan
@@ -63,9 +64,12 @@ fun PairingScreen(
     isScanning: Boolean,
     pairingStatusText: String?,
     isWaitingForWatchCheckmark: Boolean,
+    isAwaitingWatchFaceConfirmation: Boolean = false,
     onStartScan: () -> Unit,
     onSelectDevice: (DiscoveredBand) -> Unit,
     onConfirmCheckmark: () -> Unit = {},
+    onFinishPairing: () -> Unit = {},
+    onResendActivation: () -> Unit = {},
     onBackClick: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
@@ -119,19 +123,68 @@ fun PairingScreen(
                 Box(
                     modifier = Modifier
                         .size(90.dp)
-                        .scale(if (isScanning || pairingStatusText != null) pulseScale else 1.0f)
-                        .background(ElectricCyan.copy(alpha = 0.15f), CircleShape),
+                        .scale(if (isScanning || pairingStatusText != null || isAwaitingWatchFaceConfirmation) pulseScale else 1.0f)
+                        .background((if (isAwaitingWatchFaceConfirmation) NeonTeal else ElectricCyan).copy(alpha = 0.15f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isWaitingForWatchCheckmark) Icons.Default.CheckCircle else Icons.Default.BluetoothSearching,
+                        imageVector = if (isWaitingForWatchCheckmark || isAwaitingWatchFaceConfirmation) Icons.Default.CheckCircle else Icons.Default.BluetoothSearching,
                         contentDescription = null,
-                        tint = if (isWaitingForWatchCheckmark) NeonTeal else ElectricCyan,
+                        tint = if (isWaitingForWatchCheckmark || isAwaitingWatchFaceConfirmation) NeonTeal else ElectricCyan,
                         modifier = Modifier.size(44.dp)
                     )
                 }
 
-                if (isWaitingForWatchCheckmark) {
+                if (isAwaitingWatchFaceConfirmation) {
+                    Text(
+                        text = "⌚ LOOK AT YOUR WATCH SCREEN!",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonTeal
+                    )
+                    Text(
+                        text = "Does your Huawei Band show 'Paired successfully' or your active watch face?",
+                        fontSize = 13.sp,
+                        color = TextPrimary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onFinishPairing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonTeal,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Text(
+                            text = "✓ YES! WATCH FACE IS ACTIVE",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Button(
+                        onClick = onResendActivation,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SurfaceVariantDark,
+                            contentColor = ElectricCyan
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                    ) {
+                        Text(
+                            text = "↻ RESEND ACTIVATION SIGNAL",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else if (isWaitingForWatchCheckmark) {
                     Text(
                         text = "👉 TAP CHECKMARK ON YOUR BAND!",
                         fontSize = 16.sp,
