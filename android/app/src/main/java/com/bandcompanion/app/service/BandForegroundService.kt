@@ -10,9 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.bandcompanion.app.MainActivity
 import com.bandcompanion.core.bluetooth.BleConnectionManager
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import com.bandcompanion.core.database.AppDatabase
 import com.bandcompanion.core.database.repository.DeviceRepository
 import com.bandcompanion.core.database.repository.SampleRepository
@@ -103,7 +105,7 @@ class BandForegroundService : Service() {
         serviceScope.launch {
             val primary = deviceRepo.getPrimaryDevice()
             val mac = primary?.macAddress
-            val (_, secretKey) = if (mac != null) deviceRepo.getDeviceCredentials(mac) else Pair(null, null)
+            val (authKey, secretKey) = if (mac != null) deviceRepo.getDeviceCredentials(mac) else Pair(null, null)
 
             if (mac == null || secretKey == null) {
                 // Not bonded yet. Do not connect or hold BLE connection open!
@@ -116,9 +118,17 @@ class BandForegroundService : Service() {
             bleManager.connectionState.collectLatest { state ->
                 when (state) {
                     BleConnectionManager.ConnectionState.SERVICES_DISCOVERED -> {
+                        if (bleManager.protocolHandler.authState.value == BandProtocolHandler.AuthState.AUTHENTICATED) {
+                            Log.i("BandForegroundService", "Already authenticated, skipping redundant handshake and starting sync.")
+                            updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 92}%")
+                            startKeepaliveLoop()
+                            triggerDataSync()
+                            return@collectLatest
+                        }
+
                         updateNotification("Authenticating...")
                         // Perform handshake
-                        val success = bleManager.protocolHandler.authenticateReconnect(secretKey)
+                        val success = bleManager.protocolHandler.authenticateHandshake(storedAuthKeyHex = authKey)
 
                         if (success) {
                             bleManager.protocolHandler.executePostAuthBootstrap()

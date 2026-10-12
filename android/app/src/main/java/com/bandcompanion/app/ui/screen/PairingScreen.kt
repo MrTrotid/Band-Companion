@@ -65,6 +65,7 @@ fun PairingScreen(
     isWaitingForWatchCheckmark: Boolean,
     onStartScan: () -> Unit,
     onSelectDevice: (DiscoveredBand) -> Unit,
+    onConfirmCheckmark: () -> Unit = {},
     onBackClick: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
@@ -143,6 +144,24 @@ fun PairingScreen(
                         color = TextPrimary,
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onConfirmCheckmark,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonTeal,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Text(
+                            text = "✓ I TAPPED CHECKMARK ON WATCH",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 } else if (pairingStatusText != null) {
                     Text(
                         text = pairingStatusText,

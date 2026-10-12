@@ -57,9 +57,11 @@ import com.bandcompanion.core.database.repository.SampleRepository
 import com.bandcompanion.core.database.repository.SleepRepository
 import com.bandcompanion.core.database.repository.SummaryRepository
 import com.bandcompanion.core.model.DeviceInfo
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
 
@@ -181,6 +183,7 @@ fun MainAppContent(
     var isPairingOpen by remember { mutableStateOf(false) }
     var pairingStatusText by remember { mutableStateOf<String?>(null) }
     var isWaitingForWatchCheckmark by remember { mutableStateOf(false) }
+    var userConfirmationDeferred by remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -202,6 +205,7 @@ fun MainAppContent(
             pairingStatusText = pairingStatusText,
             isWaitingForWatchCheckmark = isWaitingForWatchCheckmark,
             onStartScan = { bleScanner.startScan() },
+            onConfirmCheckmark = { userConfirmationDeferred?.complete(Unit) },
             onSelectDevice = { selectedBand ->
                 coroutineScope.launch {
                     bleScanner.stopScan()
@@ -224,7 +228,9 @@ fun MainAppContent(
                     }
 
                     pairingStatusText = "Authenticating with Band..."
-                    val success = bleManager.protocolHandler.authenticateFirstAuth(
+                    val storedCreds = deviceRepo.getDeviceCredentials(selectedBand.macAddress)
+                    val success = bleManager.protocolHandler.authenticateHandshake(
+                        storedAuthKeyHex = storedCreds.first,
                         onStepUpdate = { status ->
                             pairingStatusText = status
                             if (status.contains("TAP CHECKMARK", ignoreCase = true)) {
@@ -233,11 +239,21 @@ fun MainAppContent(
                         },
                         onUserPrompt = {
                             isWaitingForWatchCheckmark = true
-                            pairingStatusText = "👉 TAP CHECKMARK ON YOUR BAND!"
+                            pairingStatusText = "👉 TAP CHECKMARK (✓) ON YOUR WATCH!"
+                            val deferred = CompletableDeferred<Unit>()
+                            userConfirmationDeferred = deferred
+                            withTimeoutOrNull(90000L) {
+                                deferred.await()
+                            }
+                            isWaitingForWatchCheckmark = false
+                            pairingStatusText = "Watch confirmed! Finalizing pairing..."
                         }
                     )
 
                     if (success) {
+                        bleManager.protocolHandler.executePostAuthBootstrap { status ->
+                            pairingStatusText = status
+                        }
                         isWaitingForWatchCheckmark = false
                         pairingStatusText = "Paired! Saving credentials..."
 

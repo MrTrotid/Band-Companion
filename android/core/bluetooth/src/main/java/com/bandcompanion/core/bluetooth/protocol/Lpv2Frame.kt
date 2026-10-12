@@ -58,9 +58,10 @@ object Lpv2Frame {
         tlvPayload: ByteArray,
         sliceSize: Int = 244
     ): List<ByteArray> {
+        val safeSliceSize = sliceSize.coerceIn(100, 512)
         val headerLen = 5 // magic + len(2) + slice + flag
         val footerLen = 2 // CRC16
-        val maxChunk = sliceSize - headerLen - footerLen
+        val maxChunk = (safeSliceSize - headerLen - footerLen).coerceAtLeast(30)
 
         val chunks = mutableListOf<Pair<ByteArray, Boolean>>()
         var pos = 0
@@ -68,10 +69,10 @@ object Lpv2Frame {
         val total = tlvPayload.size
 
         while (pos < total || first) {
-            val avail = if (first) maxChunk - 2 else maxChunk
+            val avail = if (first) (maxChunk - 2).coerceAtLeast(10) else maxChunk
             val chunkLen = (total - pos).coerceAtMost(avail).coerceAtLeast(0)
             val chunk = if (chunkLen > 0) tlvPayload.copyOfRange(pos, pos + chunkLen) else ByteArray(0)
-            pos += chunkLen
+            pos += if (chunkLen > 0) chunkLen else total.coerceAtLeast(1)
             val last = (pos >= total)
             first = false
             chunks.add(Pair(chunk, last))

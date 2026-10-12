@@ -74,6 +74,11 @@ class BleConnectionManager(
 
     @SuppressLint("MissingPermission")
     fun connect(macAddress: String) {
+        if (bluetoothGatt != null && (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.SERVICES_DISCOVERED)) {
+            Log.i(TAG, "connect: Already connected to $macAddress with active GATT, reusing connection.")
+            return
+        }
+
         val adapter = BluetoothAdapter.getDefaultAdapter() ?: run {
             Log.e(TAG, "BluetoothAdapter is null!")
             return
@@ -226,6 +231,10 @@ class BleConnectionManager(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
+            // On API 33+, the overload onCharacteristicChanged(gatt, characteristic, value) handles notifications
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                return
+            }
             if (characteristic.uuid == CHAR_NOTIFY_UUID) {
                 val value = characteristic.value ?: return
                 val hexPreview = if (value.size <= 24) HiChain3Crypto.bytesToHex(value) else HiChain3Crypto.bytesToHex(value.copyOf(24)) + "..."
