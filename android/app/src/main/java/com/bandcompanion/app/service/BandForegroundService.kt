@@ -57,7 +57,7 @@ class BandForegroundService : Service() {
         sleepRepo = SleepRepository(database.sleepDao())
         deviceRepo = DeviceRepository(database.deviceDao())
 
-        bleManager = BleConnectionManager(this, serviceScope)
+        bleManager = BleConnectionManager.getInstance(this)
 
         // Observe fitness data flow
         serviceScope.launch {
@@ -102,7 +102,15 @@ class BandForegroundService : Service() {
     private fun startBleLifecycle() {
         serviceScope.launch {
             val primary = deviceRepo.getPrimaryDevice()
-            val mac = primary?.macAddress ?: "C4:16:88:8D:04:EF"
+            val mac = primary?.macAddress
+            val (_, secretKey) = if (mac != null) deviceRepo.getDeviceCredentials(mac) else Pair(null, null)
+
+            if (mac == null || secretKey == null) {
+                // Not bonded yet. Do not connect or hold BLE connection open!
+                updateNotification("Ready • Open app to pair Huawei Band")
+                return@launch
+            }
+
             bleManager.connect(mac)
 
             bleManager.connectionState.collectLatest { state ->
@@ -110,12 +118,7 @@ class BandForegroundService : Service() {
                     BleConnectionManager.ConnectionState.SERVICES_DISCOVERED -> {
                         updateNotification("Authenticating...")
                         // Perform handshake
-                        val (authKey, secretKey) = deviceRepo.getDeviceCredentials(mac)
-                        val success = if (secretKey != null) {
-                            bleManager.protocolHandler.authenticateReconnect(secretKey)
-                        } else {
-                            bleManager.protocolHandler.exchangeLinkParams()
-                        }
+                        val success = bleManager.protocolHandler.authenticateReconnect(secretKey)
 
                         if (success) {
                             bleManager.protocolHandler.executePostAuthBootstrap()

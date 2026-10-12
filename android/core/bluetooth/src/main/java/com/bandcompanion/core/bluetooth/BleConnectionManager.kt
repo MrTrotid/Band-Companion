@@ -13,6 +13,7 @@ import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +32,15 @@ class BleConnectionManager(
         val CHAR_WRITE_UUID: UUID = UUID.fromString("0000fe01-0000-1000-8000-00805f9b34fb")
         val CHAR_NOTIFY_UUID: UUID = UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb")
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+        @Volatile
+        private var instance: BleConnectionManager? = null
+
+        fun getInstance(context: Context): BleConnectionManager {
+            return instance ?: synchronized(this) {
+                instance ?: BleConnectionManager(context.applicationContext).also { instance = it }
+            }
+        }
     }
 
     enum class ConnectionState {
@@ -87,7 +97,13 @@ class BleConnectionManager(
 
         char.value = bytes
         char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        return gatt.writeCharacteristic(char)
+
+        for (attempt in 1..5) {
+            val success = gatt.writeCharacteristic(char)
+            if (success) return true
+            delay(60L) // Wait 60ms and retry if Android BLE buffer was busy
+        }
+        return false
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -132,7 +148,21 @@ class BleConnectionManager(
                 if (descriptor != null) {
                     descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     gatt.writeDescriptor(descriptor)
+                    // Note: SERVICES_DISCOVERED will be signaled in onDescriptorWrite once the band acknowledges CCCD!
+                } else {
+                    _connectionState.value = ConnectionState.SERVICES_DISCOVERED
                 }
+            } else {
+                _connectionState.value = ConnectionState.ERROR
+            }
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
                 _connectionState.value = ConnectionState.SERVICES_DISCOVERED
             } else {
                 _connectionState.value = ConnectionState.ERROR

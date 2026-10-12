@@ -189,11 +189,18 @@ class BandProtocolHandler(
      * so the UI can prompt the user to tap the checkmark.
      */
     suspend fun authenticateFirstAuth(
+        onStepUpdate: (String) -> Unit = {},
         onUserPrompt: suspend () -> Unit
     ): Boolean {
-        exchangeLinkParams()
+        onStepUpdate("Negotiating link parameters...")
+        if (!exchangeLinkParams()) {
+            return false
+        }
+
+        onStepUpdate("Negotiating security protocol...")
         negotiateSecurity()
 
+        onStepUpdate("Requesting pairing PIN...")
         val pinBytes = getPinCode() ?: return false
         val requestId = System.currentTimeMillis()
         val seed = ByteArray(32).also { random.nextBytes(it) }
@@ -232,10 +239,13 @@ class BandProtocolHandler(
 
         val step1Tlv = VarIntTlv.encode(0x01, step1Json.toString().toByteArray()) +
                 VarIntTlv.encode(0x02, byteArrayOf(0x01))
-        val resp1 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step1Tlv, timeoutMs = 45000) ?: return false
 
-        // Prompt user to tap the checkmark on the watch screen
+        // Prompt user immediately when sending Round 1: the watch screen shows the checkmark right now!
+        onStepUpdate("👉 TAP CHECKMARK ON YOUR BAND!")
         onUserPrompt()
+
+        // Band waits up to 90 seconds for user to tap the checkmark on the watch screen
+        val resp1 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step1Tlv, timeoutMs = 90000) ?: return false
 
         val resp1Json = parseHiChainJson(resp1.tlvs[0x01]) ?: return false
         val p1Resp = resp1Json.optJSONObject("payload") ?: return false
@@ -248,6 +258,7 @@ class BandProtocolHandler(
         val psk = HiChain3Crypto.derivePskFirstAuth(pinBytes, seed)
 
         // ── Round 2 ──
+        onStepUpdate("Verifying authentication token...")
         val selfToken = HiChain3Crypto.hmacSha256(
             psk,
             randSelf + randPeer + authIdPeer + HiChain3Crypto.hexToBytes(authIdSelfHex)
@@ -277,9 +288,10 @@ class BandProtocolHandler(
         }
         val step2Tlv = VarIntTlv.encode(0x01, step2Json.toString().toByteArray()) +
                 VarIntTlv.encode(0x02, byteArrayOf(0x01))
-        val resp2 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step2Tlv, timeoutMs = 15000) ?: return false
+        val resp2 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step2Tlv, timeoutMs = 20000) ?: return false
 
         // ── Round 3 ──
+        onStepUpdate("Deriving encryption keys...")
         val salt = randSelf + randPeer
         val sessKey = HiChain3Crypto.hkdfSha256(psk, salt, "hichain_iso_session_key".toByteArray(), 32)
         sessionKey = sessKey
@@ -322,6 +334,7 @@ class BandProtocolHandler(
         cachedAuthKey = authTok
 
         // ── Round 4 ──
+        onStepUpdate("Finalizing pairing bond...")
         val nonce4 = ByteArray(12).also { random.nextBytes(it) }
         val encAuthTokSelf = HiChain3Crypto.aesGcmEncrypt(challenge3, sessKey, nonce4, challenge3)
         val p4 = JSONObject().apply {
@@ -349,12 +362,13 @@ class BandProtocolHandler(
         }
         val step4Tlv = VarIntTlv.encode(0x01, step4Json.toString().toByteArray()) +
                 VarIntTlv.encode(0x02, byteArrayOf(0x01))
-        transact(SVC_BASE, CMD_HICHAIN_AUTH, step4Tlv, timeoutMs = 15000)
+        transact(SVC_BASE, CMD_HICHAIN_AUTH, step4Tlv, timeoutMs = 20000)
 
         // Derive permanent session return key
         val returnKey = HiChain3Crypto.deriveReturnKey(sessKey, salt)
         cachedSecretKey = returnKey
 
+        onStepUpdate("Paired successfully!")
         _authState.value = AuthState.AUTHENTICATED
         return true
     }

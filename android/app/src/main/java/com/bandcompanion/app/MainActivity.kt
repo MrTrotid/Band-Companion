@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
         sampleRepo = SampleRepository(database.sampleDao())
         exportManager = ExportManager(this, sampleRepo, sleepRepo, summaryRepo)
         bleScanner = BleScanner(this)
-        bleManager = BleConnectionManager(this)
+        bleManager = BleConnectionManager.getInstance(this)
 
         checkAndRequestPermissions()
 
@@ -208,18 +208,32 @@ fun MainAppContent(
                     pairingStatusText = "Connecting to ${selectedBand.name}..."
                     bleManager.connect(selectedBand.macAddress)
 
-                    // Wait for services to be discovered
+                    // Wait for services to be discovered and CCCD written
                     var waitCount = 0
-                    while (bleManager.connectionState.value != BleConnectionManager.ConnectionState.SERVICES_DISCOVERED && waitCount < 15) {
+                    while (bleManager.connectionState.value != BleConnectionManager.ConnectionState.SERVICES_DISCOVERED && waitCount < 30) {
                         delay(1000)
                         waitCount++
+                        if (waitCount % 4 == 0) {
+                            pairingStatusText = "Connecting & discovering services... (${waitCount}s)"
+                        }
+                    }
+
+                    if (bleManager.connectionState.value != BleConnectionManager.ConnectionState.SERVICES_DISCOVERED) {
+                        pairingStatusText = "Could not discover services. Ensure watch displays Disconnect screen."
+                        return@launch
                     }
 
                     pairingStatusText = "Authenticating with Band..."
                     val success = bleManager.protocolHandler.authenticateFirstAuth(
+                        onStepUpdate = { status ->
+                            pairingStatusText = status
+                            if (status.contains("TAP CHECKMARK", ignoreCase = true)) {
+                                isWaitingForWatchCheckmark = true
+                            }
+                        },
                         onUserPrompt = {
                             isWaitingForWatchCheckmark = true
-                            pairingStatusText = "👉 Tap the checkmark on your watch screen now!"
+                            pairingStatusText = "👉 TAP CHECKMARK ON YOUR BAND!"
                         }
                     )
 
