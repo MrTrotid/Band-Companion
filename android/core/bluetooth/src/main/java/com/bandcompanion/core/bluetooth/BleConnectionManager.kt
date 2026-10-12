@@ -75,11 +75,14 @@ class BleConnectionManager(
         )
     }
 
-    private var isPairingReceiverRegistered = false
-    private val pairingReceiver = object : BroadcastReceiver() {
+    private val _bondState = MutableStateFlow(BluetoothDevice.BOND_NONE)
+    val bondState: StateFlow<Int> = _bondState.asStateFlow()
+
+    private var isBondReceiverRegistered = false
+    private val bondReceiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == BluetoothDevice.ACTION_PAIRING_REQUEST) {
+            if (intent?.action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
                 val dev = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
                 } else {
@@ -88,41 +91,36 @@ class BleConnectionManager(
                 }
                 val currentMac = bluetoothGatt?.device?.address
                 if (dev != null && currentMac != null && dev.address.equals(currentMac, ignoreCase = true)) {
-                    Log.i(TAG, "ACTION_PAIRING_REQUEST intercepted for ${dev.address}: auto-confirming pairing")
-                    try {
-                        dev.setPairingConfirmation(true)
-                        abortBroadcast()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "setPairingConfirmation failed: ${e.message}")
-                    }
+                    val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                    val prevState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)
+                    Log.i(TAG, "ACTION_BOND_STATE_CHANGED for ${dev.address}: prevState=$prevState -> newState=$state")
+                    _bondState.value = state
                 }
             }
         }
     }
 
-    fun registerPairingReceiver() {
-        if (!isPairingReceiverRegistered) {
-            val filter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST).apply {
-                priority = IntentFilter.SYSTEM_HIGH_PRIORITY
-            }
+    fun registerBondReceiver() {
+        if (!isBondReceiverRegistered) {
+            val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(pairingReceiver, filter, Context.RECEIVER_EXPORTED)
+                context.registerReceiver(bondReceiver, filter, Context.RECEIVER_EXPORTED)
             } else {
-                context.registerReceiver(pairingReceiver, filter)
+                context.registerReceiver(bondReceiver, filter)
             }
-            isPairingReceiverRegistered = true
-            Log.i(TAG, "registerPairingReceiver: registered high-priority pairing request receiver")
+            isBondReceiverRegistered = true
+            Log.i(TAG, "registerBondReceiver: registered bond state change receiver")
         }
     }
 
-    fun unregisterPairingReceiver() {
-        if (isPairingReceiverRegistered) {
+    fun unregisterBondReceiver() {
+        if (isBondReceiverRegistered) {
             try {
-                context.unregisterReceiver(pairingReceiver)
+                context.unregisterReceiver(bondReceiver)
             } catch (e: Exception) {
-                Log.w(TAG, "unregisterPairingReceiver error: ${e.message}")
+                Log.w(TAG, "unregisterBondReceiver error: ${e.message}")
             }
-            isPairingReceiverRegistered = false
+            isBondReceiverRegistered = false
         }
     }
 
@@ -131,6 +129,7 @@ class BleConnectionManager(
         val dev = bluetoothGatt?.device ?: return false
         val state = dev.bondState
         Log.i(TAG, "initiateBond: device=${dev.address}, bondState=$state")
+        _bondState.value = state
         return if (state == BluetoothDevice.BOND_NONE) {
             dev.createBond()
         } else {
@@ -151,7 +150,7 @@ class BleConnectionManager(
             return
         }
 
-        registerPairingReceiver()
+        registerBondReceiver()
 
         val adapter = BluetoothAdapter.getDefaultAdapter() ?: run {
             Log.e(TAG, "BluetoothAdapter is null!")
@@ -168,7 +167,7 @@ class BleConnectionManager(
     @SuppressLint("MissingPermission")
     fun disconnect() {
         Log.i(TAG, "Disconnecting GATT...")
-        unregisterPairingReceiver()
+        unregisterBondReceiver()
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null

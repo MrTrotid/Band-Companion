@@ -2,10 +2,12 @@ package com.bandcompanion.app
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +28,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -194,6 +197,14 @@ fun MainAppContent(
 
     val discoveredBands by bleScanner.discoveredBands.collectAsState()
     val isScanning by bleScanner.isScanning.collectAsState()
+    val bondState by bleManager.bondState.collectAsState()
+
+    LaunchedEffect(bondState) {
+        if (bondState == BluetoothDevice.BOND_BONDED && isAwaitingWatchFaceConfirmation) {
+            Log.i("MainActivity", "Bluetooth bonded! Triggering watch face activation...")
+            bleManager.protocolHandler.sendDismissPairingScreen()
+        }
+    }
 
     val primaryDevice by deviceRepo.getPrimaryDeviceFlow().collectAsState(initial = null)
     val devId = primaryDevice?.macAddress ?: "C4:16:88:8D:04:EF"
@@ -209,6 +220,7 @@ fun MainAppContent(
             pairingStatusText = pairingStatusText,
             isWaitingForWatchCheckmark = isWaitingForWatchCheckmark,
             isAwaitingWatchFaceConfirmation = isAwaitingWatchFaceConfirmation,
+            bondState = bondState,
             onStartScan = { bleScanner.startScan() },
             onConfirmCheckmark = { userConfirmationDeferred?.complete(Unit) },
             onFinishPairing = {
