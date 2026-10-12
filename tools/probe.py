@@ -13,7 +13,13 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+# Ensure project root is in sys.path regardless of execution directory
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
