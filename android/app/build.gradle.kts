@@ -73,5 +73,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Room Runtime
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

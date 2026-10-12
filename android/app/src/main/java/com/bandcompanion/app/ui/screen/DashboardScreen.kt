@@ -216,7 +216,7 @@ fun RecoveryCard(recoveryScore: Int, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(14.dp),
-            horizontalAlignment = Alignment.CenterAlignment,
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
