@@ -169,6 +169,197 @@ class BandProtocolHandler(
     }
 
     /**
+     * Requests raw encrypted PIN from the band (Cmd 0x01/0x2C) and decrypts it.
+     */
+    suspend fun getPinCode(): ByteArray? {
+        val tlv = VarIntTlv.encode(0x01, byteArrayOf())
+        val resp = transact(SVC_BASE, CMD_PIN_REQUEST, tlv, timeoutMs = 30000) ?: return null
+        val msg = resp.tlvs[0x01] ?: return null
+        val iv = resp.tlvs[0x02] ?: return null
+        return try {
+            HiChain3Crypto.decryptPinCode(0x02, 1, msg, iv)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Executes the complete 4-round HiChain3 First-Authentication flow.
+     * Triggers the confirmation checkmark on the watch and invokes [onUserPrompt]
+     * so the UI can prompt the user to tap the checkmark.
+     */
+    suspend fun authenticateFirstAuth(
+        onUserPrompt: suspend () -> Unit
+    ): Boolean {
+        exchangeLinkParams()
+        negotiateSecurity()
+
+        val pinBytes = getPinCode() ?: return false
+        val requestId = System.currentTimeMillis()
+        val seed = ByteArray(32).also { random.nextBytes(it) }
+        val randSelf = ByteArray(16).also { random.nextBytes(it) }
+        val randSelfHex = HiChain3Crypto.bytesToHex(randSelf)
+        val androidIdHex = "25EB96E6DA6F73D02F596631EAA295CD"
+        val authIdSelfHex = HiChain3Crypto.bytesToHex(androidIdHex.toByteArray(Charsets.UTF_8))
+
+        // ── Round 1 ──
+        val p1 = JSONObject().apply {
+            put("isoSalt", randSelfHex)
+            put("peerAuthId", authIdSelfHex)
+            put("operationCode", 1)
+            put("seed", HiChain3Crypto.bytesToHex(seed))
+            put("peerUserType", 0)
+            put("version", JSONObject().apply {
+                put("minVersion", "1.0.0")
+                put("currentVersion", "2.0.16")
+            })
+        }
+        val step1Json = JSONObject().apply {
+            put("authForm", 0)
+            put("payload", p1)
+            put("groupAndModuleVersion", "2.0.1")
+            put("message", 1)
+            put("requestId", requestId.toString())
+            put("groupId", HiChain3Crypto.GROUP_ID)
+            put("groupName", "health_group_name")
+            put("groupOp", 2)
+            put("groupType", 256)
+            put("peerDeviceId", androidIdHex)
+            put("connDeviceId", androidIdHex)
+            put("appId", "com.huawei.health")
+            put("ownerName", "")
+        }
+
+        val step1Tlv = VarIntTlv.encode(0x01, step1Json.toString().toByteArray()) +
+                VarIntTlv.encode(0x02, byteArrayOf(0x01))
+        val resp1 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step1Tlv, timeoutMs = 45000) ?: return false
+
+        // Prompt user to tap the checkmark on the watch screen
+        onUserPrompt()
+
+        val resp1Json = parseHiChainJson(resp1.tlvs[0x01]) ?: return false
+        val p1Resp = resp1Json.optJSONObject("payload") ?: return false
+
+        val randPeerHex = p1Resp.optString("isoSalt")
+        val randPeer = HiChain3Crypto.hexToBytes(randPeerHex)
+        val authIdPeer = HiChain3Crypto.hexToBytes(p1Resp.optString("peerAuthId"))
+
+        // Derive PSK
+        val psk = HiChain3Crypto.derivePskFirstAuth(pinBytes, seed)
+
+        // ── Round 2 ──
+        val selfToken = HiChain3Crypto.hmacSha256(
+            psk,
+            randSelf + randPeer + authIdPeer + HiChain3Crypto.hexToBytes(authIdSelfHex)
+        )
+        val p2 = JSONObject().apply {
+            put("peerAuthId", authIdSelfHex)
+            put("token", HiChain3Crypto.bytesToHex(selfToken))
+            put("version", JSONObject().apply {
+                put("minVersion", "1.0.0")
+                put("currentVersion", "2.0.16")
+            })
+        }
+        val step2Json = JSONObject().apply {
+            put("authForm", 0)
+            put("payload", p2)
+            put("groupAndModuleVersion", "2.0.1")
+            put("message", 2)
+            put("requestId", requestId.toString())
+            put("groupId", HiChain3Crypto.GROUP_ID)
+            put("groupName", "health_group_name")
+            put("groupOp", 2)
+            put("groupType", 256)
+            put("peerDeviceId", androidIdHex)
+            put("connDeviceId", androidIdHex)
+            put("appId", "com.huawei.health")
+            put("ownerName", "")
+        }
+        val step2Tlv = VarIntTlv.encode(0x01, step2Json.toString().toByteArray()) +
+                VarIntTlv.encode(0x02, byteArrayOf(0x01))
+        val resp2 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step2Tlv, timeoutMs = 15000) ?: return false
+
+        // ── Round 3 ──
+        val salt = randSelf + randPeer
+        val sessKey = HiChain3Crypto.hkdfSha256(psk, salt, "hichain_iso_session_key".toByteArray(), 32)
+        sessionKey = sessKey
+
+        val nonce3 = ByteArray(12).also { random.nextBytes(it) }
+        val challenge3 = ByteArray(16).also { random.nextBytes(it) }
+        val encData3 = HiChain3Crypto.aesGcmEncrypt(challenge3, sessKey, nonce3, "hichain_iso_exchange".toByteArray())
+
+        val p3 = JSONObject().apply {
+            put("nonce", HiChain3Crypto.bytesToHex(nonce3))
+            put("encData", HiChain3Crypto.bytesToHex(encData3))
+            put("version", JSONObject().apply {
+                put("minVersion", "1.0.0")
+                put("currentVersion", "2.0.16")
+            })
+        }
+        val step3Json = JSONObject().apply {
+            put("authForm", 0)
+            put("payload", p3)
+            put("groupAndModuleVersion", "2.0.1")
+            put("message", 3)
+            put("requestId", requestId.toString())
+            put("groupId", HiChain3Crypto.GROUP_ID)
+            put("groupName", "health_group_name")
+            put("groupOp", 2)
+            put("groupType", 256)
+            put("peerDeviceId", androidIdHex)
+            put("connDeviceId", androidIdHex)
+            put("appId", "com.huawei.health")
+            put("ownerName", "")
+        }
+        val step3Tlv = VarIntTlv.encode(0x01, step3Json.toString().toByteArray()) +
+                VarIntTlv.encode(0x02, byteArrayOf(0x01))
+        val resp3 = transact(SVC_BASE, CMD_HICHAIN_AUTH, step3Tlv, timeoutMs = 30000) ?: return false
+        val p3Resp = parseHiChainJson(resp3.tlvs[0x01])?.optJSONObject("payload") ?: return false
+
+        val noncePeer3 = HiChain3Crypto.hexToBytes(p3Resp.optString("nonce"))
+        val encAuthTok = HiChain3Crypto.hexToBytes(p3Resp.optString("encAuthToken"))
+        val authTok = HiChain3Crypto.aesGcmDecrypt(encAuthTok, sessKey, noncePeer3, challenge3)
+        cachedAuthKey = authTok
+
+        // ── Round 4 ──
+        val nonce4 = ByteArray(12).also { random.nextBytes(it) }
+        val encAuthTokSelf = HiChain3Crypto.aesGcmEncrypt(challenge3, sessKey, nonce4, challenge3)
+        val p4 = JSONObject().apply {
+            put("nonce", HiChain3Crypto.bytesToHex(nonce4))
+            put("encAuthToken", HiChain3Crypto.bytesToHex(encAuthTokSelf))
+            put("version", JSONObject().apply {
+                put("minVersion", "1.0.0")
+                put("currentVersion", "2.0.16")
+            })
+        }
+        val step4Json = JSONObject().apply {
+            put("authForm", 0)
+            put("payload", p4)
+            put("groupAndModuleVersion", "2.0.1")
+            put("message", 4)
+            put("requestId", requestId.toString())
+            put("groupId", HiChain3Crypto.GROUP_ID)
+            put("groupName", "health_group_name")
+            put("groupOp", 2)
+            put("groupType", 256)
+            put("peerDeviceId", androidIdHex)
+            put("connDeviceId", androidIdHex)
+            put("appId", "com.huawei.health")
+            put("ownerName", "")
+        }
+        val step4Tlv = VarIntTlv.encode(0x01, step4Json.toString().toByteArray()) +
+                VarIntTlv.encode(0x02, byteArrayOf(0x01))
+        transact(SVC_BASE, CMD_HICHAIN_AUTH, step4Tlv, timeoutMs = 15000)
+
+        // Derive permanent session return key
+        val returnKey = HiChain3Crypto.deriveReturnKey(sessKey, salt)
+        cachedSecretKey = returnKey
+
+        _authState.value = AuthState.AUTHENTICATED
+        return true
+    }
+
+    /**
      * Performs fast reconnect with previously persisted secret_key.
      */
     suspend fun authenticateReconnect(secretKeyHex: String): Boolean {

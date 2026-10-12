@@ -1,6 +1,7 @@
 package com.bandcompanion.app
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -38,6 +39,7 @@ import com.bandcompanion.app.export.ExportManager
 import com.bandcompanion.app.service.BandForegroundService
 import com.bandcompanion.app.ui.screen.DashboardScreen
 import com.bandcompanion.app.ui.screen.LiveMetricsScreen
+import com.bandcompanion.app.ui.screen.PairingScreen
 import com.bandcompanion.app.ui.screen.SettingsScreen
 import com.bandcompanion.app.ui.screen.SleepDetailScreen
 import com.bandcompanion.app.ui.screen.TrendsScreen
@@ -45,12 +47,18 @@ import com.bandcompanion.app.ui.theme.BandCompanionTheme
 import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.SurfaceDark
 import com.bandcompanion.app.ui.theme.TextMuted
+import com.bandcompanion.core.bluetooth.BleConnectionManager
+import com.bandcompanion.core.bluetooth.BleScanner
+import com.bandcompanion.core.bluetooth.DiscoveredBand
+import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
 import com.bandcompanion.core.database.AppDatabase
 import com.bandcompanion.core.database.repository.DeviceRepository
 import com.bandcompanion.core.database.repository.SampleRepository
 import com.bandcompanion.core.database.repository.SleepRepository
 import com.bandcompanion.core.database.repository.SummaryRepository
 import com.bandcompanion.core.model.DeviceInfo
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +69,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var sleepRepo: SleepRepository
     private lateinit var sampleRepo: SampleRepository
     private lateinit var exportManager: ExportManager
+    private lateinit var bleScanner: BleScanner
+    private lateinit var bleManager: BleConnectionManager
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -80,6 +90,8 @@ class MainActivity : ComponentActivity() {
         sleepRepo = SleepRepository(database.sleepDao())
         sampleRepo = SampleRepository(database.sampleDao())
         exportManager = ExportManager(this, sampleRepo, sleepRepo, summaryRepo)
+        bleScanner = BleScanner(this)
+        bleManager = BleConnectionManager(this)
 
         checkAndRequestPermissions()
 
@@ -91,7 +103,10 @@ class MainActivity : ComponentActivity() {
                     sleepRepo = sleepRepo,
                     sampleRepo = sampleRepo,
                     exportManager = exportManager,
-                    onSyncRequested = { triggerManualSync() }
+                    bleScanner = bleScanner,
+                    bleManager = bleManager,
+                    onSyncRequested = { triggerManualSync() },
+                    onStartService = { startBandService() }
                 )
             }
         }
@@ -141,13 +156,14 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class NavigationTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    DASHBOARD("Overview", Icons.Default.Dashboard),
+    DASHBOARD("Health", Icons.Default.Dashboard),
     SLEEP("Sleep", Icons.Default.Bedtime),
-    LIVE("Live", Icons.Default.Favorite),
-    TRENDS("Trends", Icons.Default.ShowChart),
-    SETTINGS("Settings", Icons.Default.Settings)
+    LIVE("Exercise", Icons.Default.Favorite),
+    TRENDS("Discover", Icons.Default.ShowChart),
+    SETTINGS("Me", Icons.Default.Settings)
 }
 
+@SuppressLint("MissingPermission")
 @Composable
 fun MainAppContent(
     deviceRepo: DeviceRepository,
@@ -155,20 +171,94 @@ fun MainAppContent(
     sleepRepo: SleepRepository,
     sampleRepo: SampleRepository,
     exportManager: ExportManager,
-    onSyncRequested: () -> Unit
+    bleScanner: BleScanner,
+    bleManager: BleConnectionManager,
+    onSyncRequested: () -> Unit,
+    onStartService: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
     var isSyncing by remember { mutableStateOf(false) }
+    var isPairingOpen by remember { mutableStateOf(false) }
+    var pairingStatusText by remember { mutableStateOf<String?>(null) }
+    var isWaitingForWatchCheckmark by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val deviceInfo by deviceRepo.getPrimaryDeviceFlow().collectAsState(
-        initial = DeviceInfo(macAddress = "C4:16:88:8D:04:EF", name = "HUAWEI Band 10", batteryLevel = 92, isConnected = true)
-    )
+    val discoveredBands by bleScanner.discoveredBands.collectAsState()
+    val isScanning by bleScanner.isScanning.collectAsState()
 
-    val todaySummary by summaryRepo.getSummaryForDate("C4:16:88:8D:04:EF", "2026-10-12").collectAsState(initial = null)
-    val recentSummaries by summaryRepo.getRecentSummaries("C4:16:88:8D:04:EF", 30).collectAsState(initial = emptyList())
-    val latestSleepSession by sleepRepo.getLatestSleepSession("C4:16:88:8D:04:EF").collectAsState(initial = null)
+    val primaryDevice by deviceRepo.getPrimaryDeviceFlow().collectAsState(initial = null)
+    val devId = primaryDevice?.macAddress ?: "C4:16:88:8D:04:EF"
+
+    val todaySummary by summaryRepo.getSummaryForDate(devId, "2026-10-12").collectAsState(initial = null)
+    val recentSummaries by summaryRepo.getRecentSummaries(devId, 30).collectAsState(initial = emptyList())
+    val latestSleepSession by sleepRepo.getLatestSleepSession(devId).collectAsState(initial = null)
+
+    if (isPairingOpen) {
+        PairingScreen(
+            discoveredBands = discoveredBands,
+            isScanning = isScanning,
+            pairingStatusText = pairingStatusText,
+            isWaitingForWatchCheckmark = isWaitingForWatchCheckmark,
+            onStartScan = { bleScanner.startScan() },
+            onSelectDevice = { selectedBand ->
+                coroutineScope.launch {
+                    bleScanner.stopScan()
+                    pairingStatusText = "Connecting to ${selectedBand.name}..."
+                    bleManager.connect(selectedBand.macAddress)
+
+                    // Wait for services to be discovered
+                    var waitCount = 0
+                    while (bleManager.connectionState.value != BleConnectionManager.ConnectionState.SERVICES_DISCOVERED && waitCount < 15) {
+                        delay(1000)
+                        waitCount++
+                    }
+
+                    pairingStatusText = "Authenticating with Band..."
+                    val success = bleManager.protocolHandler.authenticateFirstAuth(
+                        onUserPrompt = {
+                            isWaitingForWatchCheckmark = true
+                            pairingStatusText = "👉 Tap the checkmark on your watch screen now!"
+                        }
+                    )
+
+                    if (success) {
+                        isWaitingForWatchCheckmark = false
+                        pairingStatusText = "Paired! Saving credentials..."
+
+                        val secretKeyHex = bleManager.protocolHandler.cachedSecretKey?.let { HiChain3Crypto.bytesToHex(it) }
+                        val authKeyHex = bleManager.protocolHandler.cachedAuthKey?.let { HiChain3Crypto.bytesToHex(it) }
+
+                        val newDev = DeviceInfo(
+                            macAddress = selectedBand.macAddress,
+                            name = selectedBand.name,
+                            isBonded = true,
+                            isConnected = true,
+                            batteryLevel = bleManager.protocolHandler.batteryLevel.value ?: 92,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                        deviceRepo.saveDevice(newDev, authKeyHex, secretKeyHex)
+
+                        onStartService()
+                        Toast.makeText(context, "Huawei Band paired successfully!", Toast.LENGTH_LONG).show()
+                        delay(1200)
+                        isPairingOpen = false
+                        pairingStatusText = null
+                    } else {
+                        isWaitingForWatchCheckmark = false
+                        pairingStatusText = "Pairing timed out. Please try again."
+                    }
+                }
+            },
+            onBackClick = {
+                bleScanner.stopScan()
+                isPairingOpen = false
+                pairingStatusText = null
+            }
+        )
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -198,12 +288,16 @@ fun MainAppContent(
         ) {
             when (selectedTab) {
                 NavigationTab.DASHBOARD -> DashboardScreen(
-                    deviceInfo = deviceInfo,
+                    deviceInfo = primaryDevice,
                     todaySummary = todaySummary,
                     isSyncing = isSyncing,
                     onSyncClick = {
                         isSyncing = true
                         onSyncRequested()
+                    },
+                    onPairClick = {
+                        isPairingOpen = true
+                        bleScanner.startScan()
                     }
                 )
                 NavigationTab.SLEEP -> SleepDetailScreen(
@@ -216,19 +310,19 @@ fun MainAppContent(
                     summaries = recentSummaries
                 )
                 NavigationTab.SETTINGS -> SettingsScreen(
-                    deviceInfo = deviceInfo,
+                    deviceInfo = primaryDevice,
                     onExportCsvClick = {
                         coroutineScope.launch {
                             val now = System.currentTimeMillis() / 1000
                             val monthAgo = now - (30 * 86400)
-                            val file = exportManager.exportSamplesToCsv(deviceInfo?.macAddress ?: "C4:16:88:8D:04:EF", monthAgo, now)
-                            Toast.makeText(context, "CSV exported to: ${file.name}", Toast.LENGTH_LONG).show()
+                            val file = exportManager.exportSamplesToCsv(devId, monthAgo, now)
+                            Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
                         }
                     },
                     onExportJsonClick = {
                         coroutineScope.launch {
-                            val file = exportManager.exportFullJson(deviceInfo?.macAddress ?: "C4:16:88:8D:04:EF")
-                            Toast.makeText(context, "JSON exported to: ${file.name}", Toast.LENGTH_LONG).show()
+                            val file = exportManager.exportFullJson(devId)
+                            Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
                         }
                     }
                 )
