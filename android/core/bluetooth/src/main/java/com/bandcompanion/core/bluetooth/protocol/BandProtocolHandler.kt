@@ -35,17 +35,30 @@ class BandProtocolHandler(
         private const val TAG = "BandProtocol"
         const val SVC_BASE = 0x01
         const val CMD_LINK_PARAMS = 0x01
-        const val CMD_SECURITY_NEG = 0x33
-        const val CMD_PIN_REQUEST = 0x2C
-        const val CMD_HICHAIN_AUTH = 0x28
-        const val CMD_PHONE_INFO = 0x10
+        const val CMD_SUPPORTED_SERVICES = 0x02
+        const val CMD_SUPPORTED_COMMANDS = 0x03
+        const val CMD_TIME = 0x05
         const val CMD_PRODUCT = 0x07
         const val CMD_BATTERY = 0x08
-        const val CMD_TIME_SYNC = 0x02
+        const val CMD_PHONE_INFO = 0x10
+        const val CMD_DEVICE_STATUS = 0x16
+        const val CMD_PIN_REQUEST = 0x2C
+        const val CMD_HICHAIN_AUTH = 0x28
         const val CMD_ACCEPT_AGREEMENT = 0x30
+        const val CMD_SETTING_RELATED = 0x31
+        const val CMD_SECURITY_NEG = 0x33
         const val CMD_CONNECT_STATUS = 0x35
+        const val CMD_EXPAND_CAPABILITY = 0x37
+        const val CMD_WEAR_STATUS = 0x3D
         const val CMD_SETUP_DEVICE_STATUS = 0x3E
         const val CMD_REVERSE_CAPABILITIES = 0x3F
+
+        val KNOWN_SUPPORTED_SERVICES = byteArrayOf(
+            0x01, 0x02, 0x03, 0x04, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x20,
+            0x25, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x30, 0x31, 0x32, 0x34,
+            0x35, 0x36, 0x37, 0x38
+        )
 
         const val SVC_FITNESS = 0x02
         const val CMD_FITNESS_HISTORY = 0x03
@@ -785,12 +798,16 @@ class BandProtocolHandler(
     /**
      * Executes Post-Auth Connected Bootstrap matching tools/connect.py:
      * 1. Product info query (CMD_PRODUCT 0x01/0x07)
-     * 2. Time Sync (CMD_TIME_SYNC 0x01/0x02) with timezone offset
+     * 2. Time Sync (CMD_TIME 0x01/0x05) with timezone offset
      * 3. Battery query (CMD_BATTERY 0x01/0x08)
-     * 4. Mandatory legal agreement acceptance (CMD_ACCEPT_AGREEMENT 0x01/0x30)
-     * 5. Reverse capabilities announcement (CMD_REVERSE_CAPABILITIES 0x01/0x3F)
-     * 6. Setup device status (CMD_SETUP_DEVICE_STATUS 0x01/0x3E) via sendEncryptedNoWait (no blocking)
-     * 7. Final CMD_CONNECT_STATUS (0x01/0x35) -> Activates watch face and dismisses pairing UI on band!
+     * 4. Supported services announcement (CMD_SUPPORTED_SERVICES 0x01/0x02)
+     * 5. Expand capability query (CMD_EXPAND_CAPABILITY 0x01/0x37)
+     * 6. Settings query (CMD_SETTING_RELATED 0x01/0x31)
+     * 7. Mandatory legal agreement acceptance (CMD_ACCEPT_AGREEMENT 0x01/0x30)
+     * 8. Reverse capabilities announcement (CMD_REVERSE_CAPABILITIES 0x01/0x3F)
+     * 9. Setup device status (CMD_SETUP_DEVICE_STATUS 0x01/0x3E) via sendEncryptedNoWait (no blocking)
+     * 10. Wear status query (CMD_WEAR_STATUS 0x01/0x3D)
+     * 11. Final CMD_CONNECT_STATUS (0x01/0x35) -> Activates watch face and dismisses pairing UI on band!
      */
     suspend fun executePostAuthBootstrap(
         onStepUpdate: (String) -> Unit = {}
@@ -810,12 +827,13 @@ class BandProtocolHandler(
             Log.w(TAG, "Product query non-fatal error: ${e.message}")
         }
 
-        // 2. Time Sync (svc=0x01, cmd=0x02)
+        // 2. Time Sync (svc=0x01, cmd=0x05) - Real time command on Huawei wearables!
         try {
             val nowSec = (System.currentTimeMillis() / 1000).toInt()
             val tzBytes = getTimezoneOffsetBytes()
             val timePayload = VarIntTlv.encode(0x01, nowSec) + VarIntTlv.encode(0x02, tzBytes)
-            transactEncrypted(SVC_BASE, CMD_TIME_SYNC, timePayload, timeoutMs = 5000)
+            val timeResp = transactEncrypted(SVC_BASE, CMD_TIME, timePayload, timeoutMs = 5000)
+            Log.i(TAG, "Time sync response: ${timeResp?.keys}")
         } catch (e: Exception) {
             Log.w(TAG, "Time sync error: ${e.message}")
         }
@@ -823,7 +841,34 @@ class BandProtocolHandler(
         // 3. Battery query (svc=0x01, cmd=0x08)
         queryBattery()
 
-        // 4. Accept mandatory agreements (svc=0x01, cmd=0x30)
+        // 4. Supported services announcement (svc=0x01, cmd=0x02)
+        try {
+            val servPayload = VarIntTlv.encode(0x01, KNOWN_SUPPORTED_SERVICES)
+            transactEncrypted(SVC_BASE, CMD_SUPPORTED_SERVICES, servPayload, timeoutMs = 5000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Supported services error: ${e.message}")
+        }
+
+        // 5. Expand capabilities query (svc=0x01, cmd=0x37)
+        try {
+            val capPayload = VarIntTlv.encode(0x01, ByteArray(0))
+            transactEncrypted(SVC_BASE, CMD_EXPAND_CAPABILITY, capPayload, timeoutMs = 5000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Expand capability error: ${e.message}")
+        }
+
+        // 6. Settings query (svc=0x01, cmd=0x31)
+        try {
+            var settingPayload = ByteArray(0)
+            for (tag in 1..6) {
+                settingPayload += VarIntTlv.encode(tag, ByteArray(0))
+            }
+            transactEncrypted(SVC_BASE, CMD_SETTING_RELATED, settingPayload, timeoutMs = 5000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Settings related error: ${e.message}")
+        }
+
+        // 7. Accept mandatory agreements (svc=0x01, cmd=0x30)
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_ACCEPT_AGREEMENT (cmd=0x30)...")
         try {
             val timestamp = System.currentTimeMillis().toString().toByteArray(Charsets.UTF_8)
@@ -848,7 +893,7 @@ class BandProtocolHandler(
             Log.w(TAG, "CMD_ACCEPT_AGREEMENT error: ${e.message}")
         }
 
-        // 5. Send Reverse Capabilities (svc=0x01, cmd=0x3F)
+        // 8. Send Reverse Capabilities (svc=0x01, cmd=0x3F)
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_REVERSE_CAPABILITIES (cmd=0x3F)...")
         try {
             val revCapPayload = VarIntTlv.encode(0x01, byteArrayOf(0xFD.toByte(), 0xF7.toByte(), 0x73, 0x7A))
@@ -857,7 +902,7 @@ class BandProtocolHandler(
             Log.w(TAG, "CMD_REVERSE_CAPABILITIES error: ${e.message}")
         }
 
-        // 6. Setup Device Status (svc=0x01, cmd=0x3E) via sendEncryptedNoWait (matches tools/connect.py)
+        // 9. Setup Device Status (svc=0x01, cmd=0x3E) via sendEncryptedNoWait (matches tools/connect.py)
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_SETUP_DEVICE_STATUS (cmd=0x3E) no-wait...")
         try {
             val setupDevPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) +
@@ -869,7 +914,15 @@ class BandProtocolHandler(
             Log.w(TAG, "CMD_SETUP_DEVICE_STATUS error: ${e.message}")
         }
 
-        // 7. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Triggers watch screen to display active watch face!
+        // 10. Wear status query (svc=0x01, cmd=0x3D)
+        try {
+            val wearPayload = VarIntTlv.encode(0x01, ByteArray(0))
+            transactEncrypted(SVC_BASE, CMD_WEAR_STATUS, wearPayload, timeoutMs = 5000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Wear status error: ${e.message}")
+        }
+
+        // 11. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Triggers watch screen to display active watch face!
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_CONNECT_STATUS (activate watch face)...")
         val connectStatusPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
         val connectResp = transactEncrypted(SVC_BASE, CMD_CONNECT_STATUS, connectStatusPayload, timeoutMs = 5000)
