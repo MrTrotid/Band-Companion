@@ -485,23 +485,9 @@ class BandProtocolHandler(
             return false
         }
         if (r1.isTlvAck) {
-            Log.i(TAG, "hichainAuthenticate: Band returned TLV ACK in Round 1 (watch already accepted auth). Cascading directly to bind pass (opCode=2)...")
-            if (cachedAuthKey == null && fallbackAuthKey != null) {
-                cachedAuthKey = fallbackAuthKey
-                Log.i(TAG, "hichainAuthenticate: Restored fallback authKey for bind pass: ${HiChain3Crypto.bytesToHex(fallbackAuthKey!!)}")
-            }
-            return if (cachedAuthKey != null) {
-                hichainAuthenticate(
-                    pinCode = ByteArray(0),
-                    opCode = 2,
-                    onStepUpdate = onStepUpdate,
-                    onUserPrompt = onUserPrompt
-                )
-            } else {
-                Log.w(TAG, "Band accepted auth via TLV ACK but no fallback auth key available.")
-                onStepUpdate("Please go to Settings -> System -> Disconnect on watch.")
-                false
-            }
+            Log.w(TAG, "hichainAuthenticate: Round 1 was rejected or timed out on the watch (isTlvAck received).")
+            onStepUpdate("Pairing cancelled on watch. Please open Settings -> System -> Disconnect on watch and try again.")
+            return false
         }
         val p1 = r1.payload ?: run {
             Log.e(TAG, "hichainAuthenticate: Round 1 payload was null!")
