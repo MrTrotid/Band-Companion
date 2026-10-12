@@ -49,6 +49,7 @@ class BandProtocolHandler(
         const val CMD_SECURITY_NEG = 0x33
         const val CMD_CONNECT_STATUS = 0x35
         const val CMD_EXPAND_CAPABILITY = 0x37
+        const val CMD_PERMISSION_CHECK = 0x38
         const val CMD_WEAR_STATUS = 0x3D
         const val CMD_SETUP_DEVICE_STATUS = 0x3E
         const val CMD_REVERSE_CAPABILITIES = 0x3F
@@ -170,7 +171,33 @@ class BandProtocolHandler(
                     handlePhoneInfoRequest(packet.tlvs)
                 }
             }
+            packet.serviceId == SVC_BASE && packet.commandId == CMD_PERMISSION_CHECK -> {
+                scope.launch {
+                    handlePermissionCheck(packet.tlvs)
+                }
+            }
         }
+    }
+
+    private suspend fun handlePermissionCheck(tlvs: Map<Int, ByteArray>) {
+        val decrypted = decryptTransactionTlvs(tlvs)
+        if (decrypted.containsKey(0x7F)) {
+            Log.d(TAG, "PermissionCheck ACK received from band")
+            return
+        }
+        val permBytes = decrypted[0x01] ?: return
+        val permission = if (permBytes.size >= 2) {
+            ((permBytes[0].toInt() and 0xFF) shl 8) or (permBytes[1].toInt() and 0xFF)
+        } else if (permBytes.isNotEmpty()) {
+            permBytes[0].toInt() and 0xFF
+        } else {
+            0
+        }
+        if (permission <= 0) return
+        Log.i(TAG, "handlePermissionCheck: granting permission=$permission to watch...")
+        val reply = VarIntTlv.encode(0x01, byteArrayOf(((permission ushr 8) and 0xFF).toByte(), (permission and 0xFF).toByte())) +
+                VarIntTlv.encode(0x02, byteArrayOf(0x00, 0x00))
+        sendEncryptedNoWait(SVC_BASE, CMD_PERMISSION_CHECK, reply)
     }
 
     private suspend fun handlePhoneInfoRequest(tlvs: Map<Int, ByteArray>) {
