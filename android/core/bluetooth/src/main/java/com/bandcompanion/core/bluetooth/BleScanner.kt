@@ -32,21 +32,25 @@ class BleScanner(private val context: Context) {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result ?: return
             val device = result.device ?: return
-            val name = device.name ?: result.scanRecord?.deviceName ?: return
+            val rawName = device.name ?: result.scanRecord?.deviceName
 
-            // Match Huawei Band wearables
-            if (name.contains("Band", ignoreCase = true) || name.contains("HUAWEI", ignoreCase = true)) {
-                val current = _discoveredBands.value.toMutableList()
-                val existingIdx = current.indexOfFirst { it.macAddress.equals(device.address, ignoreCase = true) }
-                val item = DiscoveredBand(name = name, macAddress = device.address, rssi = result.rssi)
-
-                if (existingIdx >= 0) {
-                    current[existingIdx] = item
-                } else {
-                    current.add(item)
-                }
-                _discoveredBands.value = current.sortedByDescending { it.rssi }
+            val isTargetMac = device.address.equals("C4:16:88:8D:04:EF", ignoreCase = true)
+            val name = when {
+                isTargetMac -> rawName ?: "HUAWEI Band 10-4EF"
+                rawName != null && (rawName.contains("Band", ignoreCase = true) || rawName.contains("HUAWEI", ignoreCase = true)) -> rawName
+                else -> return
             }
+
+            val current = _discoveredBands.value.toMutableList()
+            val existingIdx = current.indexOfFirst { it.macAddress.equals(device.address, ignoreCase = true) }
+            val item = DiscoveredBand(name = name, macAddress = device.address, rssi = result.rssi)
+
+            if (existingIdx >= 0) {
+                current[existingIdx] = item
+            } else {
+                current.add(item)
+            }
+            _discoveredBands.value = current.sortedByDescending { it.rssi }
         }
 
         override fun onScanFailed(errorCode: Int) {

@@ -187,7 +187,22 @@ fun PairingScreen(
         }
 
         Text(
-            text = "DISCOVERED DEVICES",
+            text = "SAVED WEARABLE",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+        )
+
+        DiscoveredBandCard(
+            band = DiscoveredBand(name = "HUAWEI Band 10-4EF", macAddress = "C4:16:88:8D:04:EF", rssi = -55),
+            onClick = {
+                onSelectDevice(DiscoveredBand(name = "HUAWEI Band 10-4EF", macAddress = "C4:16:88:8D:04:EF", rssi = -55))
+            }
+        )
+
+        Text(
+            text = "SCAN RESULTS",
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             fontWeight = FontWeight.Bold,
@@ -195,16 +210,17 @@ fun PairingScreen(
         )
 
         // Device List
-        if (discoveredBands.isEmpty()) {
+        val filteredBands = discoveredBands.filterNot { it.macAddress.equals("C4:16:88:8D:04:EF", ignoreCase = true) }
+        if (filteredBands.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(100.dp)
                     .background(SurfaceDark, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (isScanning) "Searching for Bluetooth signals..." else "No bands found yet. Tap 'Scan Again'.",
+                    text = if (isScanning) "Scanning for other devices..." else "Tap 'Scan Again' to search.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )
@@ -213,7 +229,7 @@ fun PairingScreen(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(discoveredBands) { band ->
+                items(filteredBands) { band ->
                     DiscoveredBandCard(
                         band = band,
                         onClick = { onSelectDevice(band) }

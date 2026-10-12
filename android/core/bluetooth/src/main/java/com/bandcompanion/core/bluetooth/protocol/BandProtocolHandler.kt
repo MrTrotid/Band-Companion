@@ -94,9 +94,11 @@ class BandProtocolHandler(
     fun onRawBytesReceived(bytes: ByteArray) {
         val hex = if (bytes.size <= 24) HiChain3Crypto.bytesToHex(bytes) else HiChain3Crypto.bytesToHex(bytes.copyOf(24)) + "..."
         Log.d(TAG, "onRawBytesReceived: ${bytes.size} bytes: $hex")
-        val packet = reassembler.feed(bytes) ?: return
-        Log.i(TAG, "Reassembled complete packet: svc=${packet.serviceId}, cmd=${packet.commandId}, tlvs=${packet.tlvs.keys}")
-        handleParsedPacket(packet)
+        val packets = reassembler.feed(bytes)
+        for (packet in packets) {
+            Log.i(TAG, "Reassembled complete packet: svc=${packet.serviceId}, cmd=${packet.commandId}, tlvs=${packet.tlvs.keys}")
+            handleParsedPacket(packet)
+        }
     }
 
     private fun handleParsedPacket(packet: Lpv2Frame.ParsedPacket) {
@@ -126,22 +128,29 @@ class BandProtocolHandler(
         val deferred = CompletableDeferred<Lpv2Frame.ParsedPacket>()
         responseDeferreds[key] = deferred
 
-        val frame = Lpv2Frame.makeFrame(serviceId, commandId, payload)
-        var sent = false
-        for (attempt in 1..4) {
-            sent = sendRawBytes(frame)
-            if (sent) break
-            Log.w(TAG, "transact: sendRawBytes failed on attempt $attempt for svc=$serviceId cmd=$commandId, retrying in 100ms...")
-            delay(100L)
+        val frames = Lpv2Frame.makeFrames(serviceId, commandId, payload, sliceSize)
+        Log.i(TAG, "transact: sending ${frames.size} frame(s) for svc=$serviceId cmd=$commandId (payloadLen=${payload.size}, sliceSize=$sliceSize)...")
+
+        for (i in frames.indices) {
+            val f = frames[i]
+            var sent = false
+            for (attempt in 1..4) {
+                sent = sendRawBytes(f)
+                if (sent) break
+                Log.w(TAG, "transact: frame $i send failed on attempt $attempt, retrying in 80ms...")
+                delay(80L)
+            }
+            if (!sent) {
+                Log.e(TAG, "transact: FAILED to send frame $i for svc=$serviceId cmd=$commandId!")
+                responseDeferreds.remove(key)
+                return null
+            }
+            if (frames.size > 1 && i < frames.size - 1) {
+                delay(45L) // 45ms inter-frame delay so the watch's BLE RX FIFO buffer does not overflow
+            }
         }
 
-        if (!sent) {
-            Log.e(TAG, "transact: FAILED to send frame for svc=$serviceId cmd=$commandId after 4 attempts!")
-            responseDeferreds.remove(key)
-            return null
-        }
-
-        Log.i(TAG, "transact: sent frame for svc=$serviceId cmd=$commandId (${frame.size}B). Waiting for reply (timeout=${timeoutMs}ms)...")
+        Log.i(TAG, "transact: all frames sent. Waiting for response on key=0x${Integer.toHexString(key)} (timeout=${timeoutMs}ms)...")
         val result = withTimeoutOrNull(timeoutMs) {
             deferred.await()
         }
