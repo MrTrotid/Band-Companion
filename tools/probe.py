@@ -113,9 +113,27 @@ class HuaweiBandClient:
             except Exception as e:
                 logger.debug("Failed parsing frame: %s", e)
 
-    async def connect(self):
-        logger.info("Connecting to Band 10 at %s...", self.address)
-        self.client = BleakClient(self.address)
+    async def connect(self, timeout: float = 15.0):
+        logger.info("Scanning for Band 10 at %s (timeout: %.0fs)...", self.address, timeout)
+        device = await BleakScanner.find_device_by_address(self.address, timeout=timeout)
+
+        if not device:
+            logger.error("Device %s was not detected in BLE scan.", self.address)
+            print("\n" + "!" * 70)
+            print("⚠️  BAND NOT DETECTED IN BLUETOOTH SCAN")
+            print("!" * 70)
+            print("1. Is the Band currently connected to your phone's Huawei Health app?")
+            print("   -> BLE devices cannot connect to two hosts simultaneously.")
+            print("   -> Temporarily turn OFF Bluetooth on your phone while testing here.")
+            print("2. Is the Band's screen awake?")
+            print("   -> Tap the Band screen so it lights up and starts advertising.")
+            print("3. Is the MAC address correct?")
+            print("   -> Check Settings -> About on the Band, or run `python tools/scan.py`.")
+            print("!" * 70 + "\n")
+            raise ConnectionError(f"Band {self.address} not advertising or unreachable.")
+
+        logger.info("Found %s (RSSI: %s dBm). Connecting...", device.name or "Band", getattr(device, "rssi", "N/A"))
+        self.client = BleakClient(device)
         await self.client.connect()
         logger.info("Connected! Starting notifications on %s", NOTIFY_UUID)
         await self.client.start_notify(NOTIFY_UUID, self._on_notify)
