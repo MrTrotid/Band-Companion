@@ -2,6 +2,7 @@ package com.bandcompanion.core.database.repository
 
 import com.bandcompanion.core.database.dao.SummaryDao
 import com.bandcompanion.core.database.entity.DailySummaryEntity
+import com.bandcompanion.core.model.DailyRollup
 import com.bandcompanion.core.model.DailySummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -19,6 +20,24 @@ class SummaryRepository(private val summaryDao: SummaryDao) {
 
     fun getSummaryForDate(deviceId: String, date: String): Flow<DailySummary?> {
         return summaryDao.getSummaryForDate(deviceId, date).map { it?.toDomainModel() }
+    }
+
+    fun getDailyRollupForDate(deviceId: String, date: String): Flow<DailyRollup?> {
+        return summaryDao.getSummaryForDate(deviceId, date).map { entity ->
+            entity?.let {
+                DailyRollup(
+                    deviceId = it.deviceId,
+                    date = it.date,
+                    stepCount = it.totalSteps,
+                    activeMinutes = it.activeMinutes,
+                    caloriesBurned = it.caloriesBurned,
+                    standHours = it.standHours,
+                    stressScore = it.stressScore,
+                    avgHrv = it.avgHrv,
+                    avgSpo2 = it.avgSpo2
+                )
+            }
+        }
     }
 
     suspend fun getSummaryForDateSync(deviceId: String, date: String): DailySummary? {

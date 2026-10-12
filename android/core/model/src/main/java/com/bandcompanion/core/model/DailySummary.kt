@@ -9,10 +9,15 @@ package com.bandcompanion.core.model
 data class DailySummary(
     val date: String, // Format: YYYY-MM-DD
     val totalSteps: Int = 0,
+    val activeMinutes: Int = 0,
+    val caloriesBurned: Int = 0,
+    val standHours: Int = 0,
     val restingHeartRate: Int? = null,
     val minHeartRate: Int? = null,
     val maxHeartRate: Int? = null,
     val avgSpo2: Float? = null,
+    val stressScore: Int? = null,
+    val avgHrv: Float? = null,
     val totalSleepMinutes: Int = 0,
     val deepSleepMinutes: Int = 0,
     val remSleepMinutes: Int = 0,

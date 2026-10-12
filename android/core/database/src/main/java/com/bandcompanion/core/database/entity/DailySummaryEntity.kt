@@ -18,6 +18,12 @@ data class DailySummaryEntity(
     val deviceId: String,
     @ColumnInfo(name = "total_steps")
     val totalSteps: Int = 0,
+    @ColumnInfo(name = "active_minutes")
+    val activeMinutes: Int = 0,
+    @ColumnInfo(name = "calories_burned")
+    val caloriesBurned: Int = 0,
+    @ColumnInfo(name = "stand_hours")
+    val standHours: Int = 0,
     @ColumnInfo(name = "resting_heart_rate")
     val restingHeartRate: Int? = null,
     @ColumnInfo(name = "min_heart_rate")
@@ -26,6 +32,10 @@ data class DailySummaryEntity(
     val maxHeartRate: Int? = null,
     @ColumnInfo(name = "avg_spo2")
     val avgSpo2: Float? = null,
+    @ColumnInfo(name = "stress_score")
+    val stressScore: Int? = null,
+    @ColumnInfo(name = "avg_hrv")
+    val avgHrv: Float? = null,
     @ColumnInfo(name = "total_sleep_minutes")
     val totalSleepMinutes: Int = 0,
     @ColumnInfo(name = "deep_sleep_minutes")
@@ -50,10 +60,15 @@ data class DailySummaryEntity(
     fun toDomainModel(): DailySummary = DailySummary(
         date = date,
         totalSteps = totalSteps,
+        activeMinutes = activeMinutes,
+        caloriesBurned = caloriesBurned,
+        standHours = standHours,
         restingHeartRate = restingHeartRate,
         minHeartRate = minHeartRate,
         maxHeartRate = maxHeartRate,
         avgSpo2 = avgSpo2,
+        stressScore = stressScore,
+        avgHrv = avgHrv,
         totalSleepMinutes = totalSleepMinutes,
         deepSleepMinutes = deepSleepMinutes,
         remSleepMinutes = remSleepMinutes,
@@ -72,10 +87,15 @@ data class DailySummaryEntity(
                 date = model.date,
                 deviceId = deviceId,
                 totalSteps = model.totalSteps,
+                activeMinutes = model.activeMinutes,
+                caloriesBurned = model.caloriesBurned,
+                standHours = model.standHours,
                 restingHeartRate = model.restingHeartRate,
                 minHeartRate = model.minHeartRate,
                 maxHeartRate = model.maxHeartRate,
                 avgSpo2 = model.avgSpo2,
+                stressScore = model.stressScore,
+                avgHrv = model.avgHrv,
                 totalSleepMinutes = model.totalSleepMinutes,
                 deepSleepMinutes = model.deepSleepMinutes,
                 remSleepMinutes = model.remSleepMinutes,
