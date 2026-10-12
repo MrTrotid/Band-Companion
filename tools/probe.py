@@ -279,18 +279,6 @@ class HuaweiBandClient:
         iv = tlvs.get(0x02, b"")
         pin_bytes = decrypt_pin_code(self.enc_method, self.auth_version, enc_pin, iv)
         logger.info("<- Received decrypted PIN bytes: %s", pin_bytes.hex())
-
-        print("\n" + "=" * 70)
-        print("👉 LOOK AT YOUR HUAWEI BAND 10 SCREEN RIGHT NOW!")
-        print("👉 The band is vibrating and showing a pairing prompt with a checkmark.")
-        print("👉 TAP THE CHECKMARK / YES ON YOUR WATCH SCREEN NOW!")
-        print("=" * 70 + "\n")
-
-        for i in range(12, 0, -1):
-            print(f"Waiting for you to tap the checkmark on the watch: {i}s remaining...", end="\r")
-            await asyncio.sleep(1)
-        print("\nProceeding with HiChain3 mutual authentication...")
-
         return pin_bytes
 
     def _build_hichain_tlv(self, step: int, payload_extra: dict, op_code: int, request_id: int) -> bytes:
@@ -372,6 +360,24 @@ class HuaweiBandClient:
 
         tlv1 = self._build_hichain_tlv(1, p1_extra, op_code, request_id)
         await self.send(0x01, 0x28, tlv1)
+
+        if op_code == 1:
+            print("\n" + "=" * 70)
+            print("👉 PAIRING REQUEST SENT TO WATCH!")
+            print("👉 Look at your Huawei Band 10 screen right now!")
+            print("👉 The pairing request with the checkmark is showing on your watch!")
+            print("👉 1. TAP THE CHECKMARK / YES ON YOUR WATCH SCREEN.")
+            print("👉 2. THEN PRESS ENTER HERE IN THIS TERMINAL TO COMPLETE PAIRING.")
+            print("=" * 70 + "\n")
+
+            try:
+                await asyncio.to_thread(input, "Press Enter AFTER tapping the checkmark on your watch: ")
+            except Exception:
+                for i in range(15, 0, -1):
+                    print(f"Waiting for you to tap the checkmark on the watch: {i}s...", end="\r")
+                    await asyncio.sleep(1)
+                print()
+
         resp1_tlvs = await self.recv(0x01, 0x28, timeout=90.0)
         step, p1 = self._parse_hichain_resp(resp1_tlvs)
 
