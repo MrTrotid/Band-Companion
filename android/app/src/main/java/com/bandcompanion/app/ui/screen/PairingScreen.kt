@@ -66,7 +66,6 @@ fun PairingScreen(
     pairingStatusText: String?,
     isWaitingForWatchCheckmark: Boolean,
     isAwaitingWatchFaceConfirmation: Boolean = false,
-    bondState: Int = BluetoothDevice.BOND_NONE,
     onStartScan: () -> Unit,
     onSelectDevice: (DiscoveredBand) -> Unit,
     onConfirmCheckmark: () -> Unit = {},
@@ -138,35 +137,19 @@ fun PairingScreen(
                 }
 
                 if (isAwaitingWatchFaceConfirmation) {
-                    if (bondState == BluetoothDevice.BOND_BONDING) {
-                        Text(
-                            text = "📱 TAP 'PAIR' ON YOUR PHONE POPUP!",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NeonTeal
-                        )
-                        Text(
-                            text = "A system Bluetooth pairing dialog or notification has appeared on your phone. Please tap 'Pair' to complete bonding.",
-                            fontSize = 13.sp,
-                            color = TextPrimary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-                    } else {
-                        Text(
-                            text = "⌚ LOOK AT YOUR WATCH SCREEN!",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NeonTeal
-                        )
-                        Text(
-                            text = "Does your Huawei Band show 'Paired successfully' or your active watch face?",
-                            fontSize = 13.sp,
-                            color = TextPrimary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-                    }
+                    Text(
+                        text = "⌚ LOOK AT YOUR WATCH SCREEN!",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonTeal
+                    )
+                    Text(
+                        text = "Does your Huawei Band show 'Paired successfully' or your active watch face?",
+                        fontSize = 13.sp,
+                        color = TextPrimary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = onFinishPairing,

@@ -197,15 +197,6 @@ fun MainAppContent(
 
     val discoveredBands by bleScanner.discoveredBands.collectAsState()
     val isScanning by bleScanner.isScanning.collectAsState()
-    val bondState by bleManager.bondState.collectAsState()
-
-    LaunchedEffect(bondState) {
-        if (bondState == BluetoothDevice.BOND_BONDED && isAwaitingWatchFaceConfirmation) {
-            Log.i("MainActivity", "Bluetooth bonded! Triggering watch face activation...")
-            bleManager.protocolHandler.sendDismissPairingScreen()
-        }
-    }
-
     val primaryDevice by deviceRepo.getPrimaryDeviceFlow().collectAsState(initial = null)
     val devId = primaryDevice?.macAddress ?: "C4:16:88:8D:04:EF"
 
@@ -220,7 +211,6 @@ fun MainAppContent(
             pairingStatusText = pairingStatusText,
             isWaitingForWatchCheckmark = isWaitingForWatchCheckmark,
             isAwaitingWatchFaceConfirmation = isAwaitingWatchFaceConfirmation,
-            bondState = bondState,
             onStartScan = { bleScanner.startScan() },
             onConfirmCheckmark = { userConfirmationDeferred?.complete(Unit) },
             onFinishPairing = {
@@ -292,7 +282,6 @@ fun MainAppContent(
                         bleManager.protocolHandler.executePostAuthBootstrap { status ->
                             pairingStatusText = status
                         }
-                        bleManager.initiateBond()
                         isWaitingForWatchCheckmark = false
 
                         val secretKeyHex = bleManager.protocolHandler.cachedSecretKey?.let { HiChain3Crypto.bytesToHex(it) }
