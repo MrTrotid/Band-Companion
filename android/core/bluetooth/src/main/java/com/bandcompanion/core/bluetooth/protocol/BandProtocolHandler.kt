@@ -1,5 +1,6 @@
 package com.bandcompanion.core.bluetooth.protocol
 
+import android.util.Log
 import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
 import com.bandcompanion.core.model.SampleMetric
 import com.bandcompanion.core.model.SleepSession
@@ -30,6 +31,7 @@ class BandProtocolHandler(
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
     companion object {
+        private const val TAG = "BandProtocol"
         const val SVC_BASE = 0x01
         const val CMD_LINK_PARAMS = 0x01
         const val CMD_SECURITY_NEG = 0x33
@@ -90,12 +92,16 @@ class BandProtocolHandler(
      * Feeds incoming notification bytes from characteristic 0000fe02.
      */
     fun onRawBytesReceived(bytes: ByteArray) {
+        val hex = if (bytes.size <= 24) HiChain3Crypto.bytesToHex(bytes) else HiChain3Crypto.bytesToHex(bytes.copyOf(24)) + "..."
+        Log.d(TAG, "onRawBytesReceived: ${bytes.size} bytes: $hex")
         val packet = reassembler.feed(bytes) ?: return
+        Log.i(TAG, "Reassembled complete packet: svc=${packet.serviceId}, cmd=${packet.commandId}, tlvs=${packet.tlvs.keys}")
         handleParsedPacket(packet)
     }
 
     private fun handleParsedPacket(packet: Lpv2Frame.ParsedPacket) {
         val key = (packet.serviceId shl 8) or packet.commandId
+        Log.d(TAG, "handleParsedPacket: resolving key=0x${Integer.toHexString(key)}")
         responseDeferreds.remove(key)?.complete(packet)
 
         // Asynchronous updates
@@ -121,15 +127,31 @@ class BandProtocolHandler(
         responseDeferreds[key] = deferred
 
         val frame = Lpv2Frame.makeFrame(serviceId, commandId, payload)
-        val sent = sendRawBytes(frame)
+        var sent = false
+        for (attempt in 1..4) {
+            sent = sendRawBytes(frame)
+            if (sent) break
+            Log.w(TAG, "transact: sendRawBytes failed on attempt $attempt for svc=$serviceId cmd=$commandId, retrying in 100ms...")
+            delay(100L)
+        }
+
         if (!sent) {
+            Log.e(TAG, "transact: FAILED to send frame for svc=$serviceId cmd=$commandId after 4 attempts!")
             responseDeferreds.remove(key)
             return null
         }
 
-        return withTimeoutOrNull(timeoutMs) {
+        Log.i(TAG, "transact: sent frame for svc=$serviceId cmd=$commandId (${frame.size}B). Waiting for reply (timeout=${timeoutMs}ms)...")
+        val result = withTimeoutOrNull(timeoutMs) {
             deferred.await()
         }
+        if (result == null) {
+            Log.e(TAG, "transact: TIMED OUT after ${timeoutMs}ms waiting for svc=$serviceId cmd=$commandId!")
+            responseDeferreds.remove(key)
+        } else {
+            Log.i(TAG, "transact: SUCCESS response for svc=$serviceId cmd=$commandId with ${result.tlvs.size} TLVs")
+        }
+        return result
     }
 
     /**
@@ -172,13 +194,25 @@ class BandProtocolHandler(
      * Requests raw encrypted PIN from the band (Cmd 0x01/0x2C) and decrypts it.
      */
     suspend fun getPinCode(): ByteArray? {
+        Log.i(TAG, "getPinCode: requesting PIN from band (svc=0x01, cmd=0x2C)...")
         val tlv = VarIntTlv.encode(0x01, byteArrayOf())
-        val resp = transact(SVC_BASE, CMD_PIN_REQUEST, tlv, timeoutMs = 30000) ?: return null
-        val msg = resp.tlvs[0x01] ?: return null
-        val iv = resp.tlvs[0x02] ?: return null
+        val resp = transact(SVC_BASE, CMD_PIN_REQUEST, tlv, timeoutMs = 30000)
+        if (resp == null) {
+            Log.e(TAG, "getPinCode: transact returned null (timed out or send failed)!")
+            return null
+        }
+        val msg = resp.tlvs[0x01]
+        val iv = resp.tlvs[0x02]
+        if (msg == null || iv == null) {
+            Log.e(TAG, "getPinCode: missing tag 0x01 or 0x02! Available tags: ${resp.tlvs.keys}")
+            return null
+        }
         return try {
-            HiChain3Crypto.decryptPinCode(0x02, 1, msg, iv)
+            val pin = HiChain3Crypto.decryptPinCode(0x02, 1, msg, iv)
+            Log.i(TAG, "getPinCode: decrypted PIN successfully! PIN=${HiChain3Crypto.bytesToHex(pin)}")
+            pin
         } catch (e: Exception) {
+            Log.e(TAG, "getPinCode: decryption failed: ${e.message}", e)
             null
         }
     }
