@@ -118,4 +118,38 @@ object VarIntTlv {
 
         return map
     }
+
+    /**
+     * Parses a byte array containing concatenated TLVs into an ordered list of Tag -> Value pairs,
+     * preserving duplicate tags (e.g. repeated 0x84 minute records or repeated 0x83 sleep records).
+     */
+    fun decodeItems(data: ByteArray, offset: Int = 0, length: Int = data.size - offset): List<Pair<Int, ByteArray>> {
+        val list = mutableListOf<Pair<Int, ByteArray>>()
+        var pos = offset
+        val end = (offset + length).coerceAtMost(data.size)
+
+        while (pos < end) {
+            val tag = data[pos].toInt() and 0xFF
+            pos++
+            if (pos >= end) break
+
+            val (len, nextPos) = decodeVarInt(data, pos)
+            pos = nextPos
+
+            if (pos + len > end) {
+                val actualLen = (end - pos).coerceAtLeast(0)
+                val value = ByteArray(actualLen)
+                System.arraycopy(data, pos, value, 0, actualLen)
+                list.add(Pair(tag, value))
+                break
+            }
+
+            val value = ByteArray(len)
+            System.arraycopy(data, pos, value, 0, len)
+            pos += len
+            list.add(Pair(tag, value))
+        }
+
+        return list
+    }
 }

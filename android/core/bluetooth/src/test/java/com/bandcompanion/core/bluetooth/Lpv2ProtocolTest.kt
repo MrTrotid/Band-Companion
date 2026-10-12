@@ -183,4 +183,48 @@ class Lpv2ProtocolTest {
         val sleepBreathPayload = VarIntTlv.encode(0x01, byteArrayOf(0x02))
         assertArrayEquals(byteArrayOf(0x01, 0x01, 0x02), sleepBreathPayload)
     }
+
+    @Test
+    fun testDecodeItemsPreservesDuplicateTags() {
+        val tlv1 = VarIntTlv.encode(0x84, byteArrayOf(0x01, 0x02))
+        val tlv2 = VarIntTlv.encode(0x84, byteArrayOf(0x03, 0x04))
+        val combined = tlv1 + tlv2
+
+        val items = VarIntTlv.decodeItems(combined)
+        assertEquals(2, items.size)
+        assertEquals(0x84, items[0].first)
+        assertArrayEquals(byteArrayOf(0x01, 0x02), items[0].second)
+        assertEquals(0x84, items[1].first)
+        assertArrayEquals(byteArrayOf(0x03, 0x04), items[1].second)
+    }
+
+    @Test
+    fun testParseStepFeaturesBitmap() {
+        val protocolHandler = com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+            sendRawBytes = { false }
+        )
+        // b1: 0x80 (has b2) | 0x02 (steps) | 0x04 (calories) | 0x40 (heart rate) = 0xC6
+        // b2: 0x01 (spo2) | 0x02 (resting hr) = 0x03
+        // steps = 100 (0x00, 0x64)
+        // calories = 25 (0x00, 0x19)
+        // heart_rate = 72
+        // spo2 = 98
+        // resting_hr = 60
+        val testData = byteArrayOf(
+            0xC6.toByte(),
+            0x03.toByte(),
+            0x00, 0x64,
+            0x00, 0x19,
+            72.toByte(),
+            98.toByte(),
+            60.toByte()
+        )
+        val features = protocolHandler.parseStepFeatures(testData)
+        assertEquals(100, features["steps"])
+        assertEquals(25, features["calories"])
+        assertEquals(72, features["heart_rate"])
+        assertEquals(98, features["spo2"])
+        assertEquals(60, features["resting_heart_rate"])
+    }
 }

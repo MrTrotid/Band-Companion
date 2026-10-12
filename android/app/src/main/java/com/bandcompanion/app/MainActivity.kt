@@ -270,7 +270,7 @@ fun MainAppContent(
                     bleScanner.stopScan()
                     isAwaitingWatchFaceConfirmation = false
                     pairingStatusText = "Connecting to ${selectedBand.name}..."
-                    bleManager.connect(selectedBand.macAddress)
+                    bleManager.connect(selectedBand.macAddress, autoConnect = false)
 
                     // Wait for services to be discovered and CCCD written
                     var waitCount = 0

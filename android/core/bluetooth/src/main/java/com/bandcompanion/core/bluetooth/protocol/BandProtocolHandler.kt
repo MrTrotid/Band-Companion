@@ -65,6 +65,10 @@ class BandProtocolHandler(
         const val CMD_FITNESS_HISTORY = 0x03
 
         const val SVC_HEALTH = 0x07
+        const val CMD_STEP_COUNT = 0x0A
+        const val CMD_STEP_RECORD = 0x0B
+        const val CMD_SLEEP_COUNT = 0x0C
+        const val CMD_SLEEP_RECORD = 0x0D
         const val CMD_TRUSLEEP = 0x16
         const val CMD_AUTO_HR = 0x17
         const val CMD_AUTO_SPO2 = 0x24
@@ -74,6 +78,10 @@ class BandProtocolHandler(
         const val SVC_DATA_SYNC = 0x2C
         const val CMD_DATA_SYNC = 0x01
         const val DICT_SLEEP_DETAILS = 700013
+
+        const val SVC_DATASYNC = 0x37
+        const val CMD_DATASYNC_CONFIG = 0x01
+        const val DATASYNC_FEATURE_CONFIG_ID = 900100007
     }
 
     enum class AuthState {
@@ -176,7 +184,33 @@ class BandProtocolHandler(
                     handlePermissionCheck(packet.tlvs)
                 }
             }
+            packet.serviceId == SVC_DATASYNC && packet.commandId == CMD_DATASYNC_CONFIG -> {
+                scope.launch {
+                    handleDataSyncConfigRequest(packet.tlvs)
+                }
+            }
         }
+    }
+
+    private suspend fun handleDataSyncConfigRequest(tlvs: Map<Int, ByteArray>) {
+        val decrypted = decryptTransactionTlvs(tlvs)
+        Log.i(TAG, "handleDataSyncConfigRequest: received DataSync packet from band, keys=${decrypted.keys}")
+        val configId = DATASYNC_FEATURE_CONFIG_ID
+        val configIdBytes = byteArrayOf(
+            ((configId ushr 24) and 0xFF).toByte(),
+            ((configId ushr 16) and 0xFF).toByte(),
+            ((configId ushr 8) and 0xFF).toByte(),
+            (configId and 0xFF).toByte()
+        )
+        val item = VarIntTlv.encode(0x05, configIdBytes) +
+                VarIntTlv.encode(0x06, byteArrayOf(0x02)) +
+                VarIntTlv.encode(0x07, "01".toByteArray(Charsets.UTF_8))
+        val nested = VarIntTlv.encode(0x84, item)
+        val reply = VarIntTlv.encode(0x01, "hw.unitedevice.configManager".toByteArray(Charsets.UTF_8)) +
+                VarIntTlv.encode(0x02, "featureManager".toByteArray(Charsets.UTF_8)) +
+                VarIntTlv.encode(0x83, nested)
+        Log.i(TAG, "handleDataSyncConfigRequest: sending feature config ACK (configId=$configId) to band...")
+        sendEncryptedNoWait(SVC_DATASYNC, CMD_DATASYNC_CONFIG, reply)
     }
 
     private suspend fun handlePermissionCheck(tlvs: Map<Int, ByteArray>) {
@@ -601,6 +635,22 @@ class BandProtocolHandler(
         }
         val r2 = parseHiChainResponse(resp2.tlvs)
         Log.i(TAG, "hichainAuthenticate: Round 2 received step=${r2?.step}")
+        if (r2 == null || r2.step == 0) {
+            Log.w(TAG, "hichainAuthenticate: Round 2 rejected by band (step=${r2?.step}).")
+            if (opCode == 2) {
+                Log.w(TAG, "hichainAuthenticate: Fast reconnect rejected; rolling back to first-auth (opCode=1)...")
+                cachedAuthKey = null
+                cachedSecretKey = null
+                val pin = getPinCode() ?: return false
+                return hichainAuthenticate(
+                    pinCode = pin,
+                    opCode = 1,
+                    onStepUpdate = onStepUpdate,
+                    onUserPrompt = onUserPrompt
+                )
+            }
+            return false
+        }
 
         // ── Round 3 (First-Auth only) ──
         val salt = randSelf + randPeer
@@ -1068,44 +1118,237 @@ class BandProtocolHandler(
     }
 
     /**
-     * Queries minute-level fitness samples (steps, HR, SpO2).
+     * Parses Huawei Band step record feature bitmap:
+     * - bitmap1 bit 0x02: steps (UInt16 big endian)
+     * - bitmap1 bit 0x04: calories (UInt16 big endian)
+     * - bitmap1 bit 0x08: distance (UInt16 big endian)
+     * - bitmap1 bit 0x40: heart_rate (UInt8)
+     * - bitmap2 bit 0x01: spo2 (UInt8)
+     * - bitmap2 bit 0x02: resting_heart_rate (UInt8)
+     */
+    fun parseStepFeatures(data: ByteArray): Map<String, Int> {
+        if (data.isEmpty()) return emptyMap()
+        var i = 0
+        val b1 = data[i].toInt() and 0xFF
+        i++
+        var b2 = 0
+        if ((b1 and 0x80) != 0) {
+            if (i >= data.size) return emptyMap()
+            b2 = data[i].toInt() and 0xFF
+            i++
+        }
+
+        val map = mutableMapOf<String, Int>()
+        val bits1 = intArrayOf(0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40)
+        for (bit in bits1) {
+            if ((b1 and bit) == 0) continue
+            val width = if (bit == 0x20 || bit == 0x40) 1 else 2
+            if (i + width > data.size) break
+            val value = if (width == 1) {
+                val v = data[i].toInt() and 0xFF
+                i += 1
+                v
+            } else {
+                val v = ((data[i].toInt() and 0xFF) shl 8) or (data[i + 1].toInt() and 0xFF)
+                i += 2
+                v
+            }
+
+            when (bit) {
+                0x02 -> map["steps"] = value
+                0x04 -> map["calories"] = value
+                0x08 -> map["distance"] = value
+                0x40 -> map["heart_rate"] = value
+            }
+        }
+
+        val bits2 = intArrayOf(0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80)
+        for (bit in bits2) {
+            if ((b2 and bit) == 0) continue
+            if (i >= data.size) break
+            val value = data[i].toInt() and 0xFF
+            i++
+            when (bit) {
+                0x01 -> map["spo2"] = value
+                0x02 -> map["resting_heart_rate"] = value
+            }
+        }
+        return map
+    }
+
+    /**
+     * Queries minute-level fitness samples (steps, HR, SpO2) using official Huawei LPv2 protocol:
+     * 1. CMD_STEP_COUNT (0x0A): Retrieves count of sample packets available in rolling window.
+     * 2. CMD_STEP_RECORD (0x0B): Iterates each packet index, decoding base timestamp and 0x84 minute samples.
      */
     suspend fun queryFitnessHistory(startTime: Long, endTime: Long): List<SampleMetric> {
         val startSec = (startTime / 1000).toInt()
         val endSec = (endTime / 1000).toInt()
 
-        val tlv1 = VarIntTlv.encode(0x01, startSec)
-        val tlv2 = VarIntTlv.encode(0x02, endSec)
-        val payload = tlv1 + tlv2
+        Log.i(TAG, "queryFitnessHistory: querying sample count from $startSec to $endSec (SVC=0x07, CMD=0x0A)...")
+        val countPayload = VarIntTlv.encode(0x81, ByteArray(0)) +
+                VarIntTlv.encode(0x03, startSec) +
+                VarIntTlv.encode(0x04, endSec)
 
-        val tlvs = if (cachedSecretKey != null) {
-            transactEncrypted(SVC_FITNESS, CMD_FITNESS_HISTORY, payload, timeoutMs = 12000)
-        } else {
-            transact(SVC_FITNESS, CMD_FITNESS_HISTORY, payload, timeoutMs = 12000)?.tlvs
-        } ?: return emptyList()
-
-        val samples = mutableListOf<SampleMetric>()
-        tlvs[0x03]?.let { recordBytes ->
-            // Parse sample records
-            var offset = 0
-            while (offset + 6 <= recordBytes.size) {
-                val ts = ((recordBytes[offset].toLong() and 0xFF) shl 24) or
-                        ((recordBytes[offset + 1].toLong() and 0xFF) shl 16) or
-                        ((recordBytes[offset + 2].toLong() and 0xFF) shl 8) or
-                        (recordBytes[offset + 3].toLong() and 0xFF)
-                val hr = recordBytes[offset + 4].toInt() and 0xFF
-                val steps = recordBytes[offset + 5].toInt() and 0xFF
-
-                val validHr = if (hr in 35..230) hr else null
-                samples.add(SampleMetric(timestamp = ts, steps = steps, heartRate = validHr))
-                offset += 6
+        val countResp = transactEncrypted(SVC_HEALTH, CMD_STEP_COUNT, countPayload, timeoutMs = 8000)
+        var stepRecordCount = -1
+        if (countResp != null) {
+            countResp[0x81]?.let { container ->
+                val sub = VarIntTlv.decodeAll(container)
+                sub[0x02]?.let { cntBytes ->
+                    if (cntBytes.size >= 2) {
+                        stepRecordCount = ((cntBytes[0].toInt() and 0xFF) shl 8) or (cntBytes[1].toInt() and 0xFF)
+                    }
+                }
+            }
+            if (stepRecordCount < 0) {
+                countResp[0x02]?.let { cntBytes ->
+                    if (cntBytes.size >= 2) {
+                        stepRecordCount = ((cntBytes[0].toInt() and 0xFF) shl 8) or (cntBytes[1].toInt() and 0xFF)
+                    }
+                }
             }
         }
 
+        Log.i(TAG, "queryFitnessHistory: watch reported stepRecordCount=$stepRecordCount")
+        if (stepRecordCount <= 0) {
+            querySleepHistory(startSec, endSec)
+            return emptyList()
+        }
+
+        val samples = mutableListOf<SampleMetric>()
+        val maxBlocks = stepRecordCount.coerceAtMost(40)
+        for (idx in 0 until maxBlocks) {
+            val idxPayload = VarIntTlv.encode(
+                0x81,
+                VarIntTlv.encode(0x02, byteArrayOf(((idx ushr 8) and 0xFF).toByte(), (idx and 0xFF).toByte()))
+            )
+            val recResp = transactEncrypted(SVC_HEALTH, CMD_STEP_RECORD, idxPayload, timeoutMs = 8000) ?: continue
+            val containerBytes = recResp[0x81] ?: continue
+            val container = VarIntTlv.decodeAll(containerBytes)
+            val baseTsBytes = container[0x03] ?: continue
+            val baseTs = if (baseTsBytes.size >= 4) {
+                ((baseTsBytes[0].toLong() and 0xFF) shl 24) or
+                        ((baseTsBytes[1].toLong() and 0xFF) shl 16) or
+                        ((baseTsBytes[2].toLong() and 0xFF) shl 8) or
+                        (baseTsBytes[3].toLong() and 0xFF)
+            } else continue
+
+            val items = VarIntTlv.decodeItems(containerBytes)
+            for ((tag, value) in items) {
+                if (tag != 0x84) continue
+                val sub = VarIntTlv.decodeAll(value)
+                val offset = sub[0x05]?.firstOrNull()?.toInt()?.and(0xFF) ?: 0
+                val rawData = sub[0x06] ?: continue
+                val features = parseStepFeatures(rawData)
+
+                val sampleTs = baseTs + (60L * offset)
+                val steps = features["steps"] ?: 0
+                val hr = features["heart_rate"]
+                val validHr = if (hr != null && hr in 35..230) hr else null
+                val spo2 = features["spo2"]
+                val validSpo2 = if (spo2 != null && spo2 in 70..100) spo2.toFloat() else null
+
+                if (steps > 0 || validHr != null || validSpo2 != null) {
+                    samples.add(
+                        SampleMetric(
+                            timestamp = sampleTs,
+                            steps = steps,
+                            heartRate = validHr,
+                            spo2 = validSpo2
+                        )
+                    )
+                }
+            }
+        }
+
+        Log.i(TAG, "queryFitnessHistory: successfully parsed ${samples.size} telemetry samples from watch")
         if (samples.isNotEmpty()) {
             _fitnessDataFlow.emit(samples)
         }
+
+        querySleepHistory(startSec, endSec)
         return samples
+    }
+
+    /**
+     * Queries sleep session records (CMD_SLEEP_COUNT 0x0C and CMD_SLEEP_RECORD 0x0D).
+     */
+    suspend fun querySleepHistory(startSec: Int, endSec: Int) {
+        try {
+            val countPayload = VarIntTlv.encode(0x81, ByteArray(0)) +
+                    VarIntTlv.encode(0x03, startSec) +
+                    VarIntTlv.encode(0x04, endSec)
+            val countResp = transactEncrypted(SVC_HEALTH, CMD_SLEEP_COUNT, countPayload, timeoutMs = 8000)
+            var sleepCount = -1
+            countResp?.get(0x81)?.let { container ->
+                val sub = VarIntTlv.decodeAll(container)
+                sub[0x02]?.let { cntBytes ->
+                    if (cntBytes.size >= 2) {
+                        sleepCount = ((cntBytes[0].toInt() and 0xFF) shl 8) or (cntBytes[1].toInt() and 0xFF)
+                    }
+                }
+            }
+            if (sleepCount <= 0) return
+
+            var totalDeep = 0
+            var totalLight = 0
+            var totalRem = 0
+            var totalAwake = 0
+            var earliestStart = Long.MAX_VALUE
+            var latestEnd = 0L
+
+            for (idx in 0 until sleepCount.coerceAtMost(20)) {
+                val idxPayload = VarIntTlv.encode(
+                    0x81,
+                    VarIntTlv.encode(0x02, byteArrayOf(((idx ushr 8) and 0xFF).toByte(), (idx and 0xFF).toByte()))
+                )
+                val recResp = transactEncrypted(SVC_HEALTH, CMD_SLEEP_RECORD, idxPayload, timeoutMs = 8000) ?: continue
+                val containerBytes = recResp[0x81] ?: continue
+                val items = VarIntTlv.decodeItems(containerBytes)
+                for ((tag, value) in items) {
+                    if (tag != 0x83) continue
+                    val sub = VarIntTlv.decodeAll(value)
+                    val stage = sub[0x04]?.firstOrNull()?.toInt()?.and(0xFF) ?: 0
+                    val stamp = sub[0x05] ?: continue
+                    if (stamp.size < 6) continue
+
+                    val start = ((stamp[0].toLong() and 0xFF) shl 24) or
+                            ((stamp[1].toLong() and 0xFF) shl 16) or
+                            ((stamp[2].toLong() and 0xFF) shl 8) or
+                            (stamp[3].toLong() and 0xFF)
+                    val durationMin = ((stamp[4].toInt() and 0xFF) shl 8) or (stamp[5].toInt() and 0xFF)
+
+                    earliestStart = minOf(earliestStart, start)
+                    latestEnd = maxOf(latestEnd, start + (durationMin * 60L))
+
+                    when (stage) {
+                        1 -> totalDeep += durationMin
+                        2 -> totalLight += durationMin
+                        3 -> totalRem += durationMin
+                        4 -> totalAwake += durationMin
+                    }
+                }
+            }
+
+            val totalDuration = totalDeep + totalLight + totalRem
+            if (totalDuration > 0 && earliestStart < Long.MAX_VALUE) {
+                val session = SleepSession(
+                    sessionId = earliestStart.toString(),
+                    startTimestamp = earliestStart * 1000L,
+                    endTimestamp = latestEnd * 1000L,
+                    durationMinutes = totalDuration + totalAwake,
+                    deepSleepMinutes = totalDeep,
+                    lightSleepMinutes = totalLight,
+                    remSleepMinutes = totalRem,
+                    awakeMinutes = totalAwake,
+                    sleepScore = (totalDuration * 100 / 480).coerceIn(45, 98)
+                )
+                _sleepDataFlow.emit(session)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "querySleepHistory error: ${e.message}")
+        }
     }
 
     /**

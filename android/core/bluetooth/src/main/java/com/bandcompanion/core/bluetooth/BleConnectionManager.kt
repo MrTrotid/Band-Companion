@@ -144,10 +144,20 @@ class BleConnectionManager(
     }
 
     @SuppressLint("MissingPermission")
-    fun connect(macAddress: String) {
-        if (bluetoothGatt != null && (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.SERVICES_DISCOVERED)) {
-            Log.i(TAG, "connect: Already connected to $macAddress with active GATT, reusing connection.")
-            return
+    fun connect(macAddress: String, autoConnect: Boolean = true) {
+        if (bluetoothGatt != null) {
+            if (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.SERVICES_DISCOVERED) {
+                Log.i(TAG, "connect: Already connected to $macAddress with active GATT, reusing connection.")
+                return
+            } else {
+                Log.i(TAG, "connect: Stale GATT instance found, closing before reconnecting...")
+                try {
+                    bluetoothGatt?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing stale GATT: ${e.message}")
+                }
+                bluetoothGatt = null
+            }
         }
 
         registerBondReceiver()
@@ -158,10 +168,10 @@ class BleConnectionManager(
         }
         val device: BluetoothDevice = adapter.getRemoteDevice(macAddress)
 
-        Log.i(TAG, "Connecting to GATT at $macAddress...")
+        Log.i(TAG, "Connecting to GATT at $macAddress (autoConnect=$autoConnect)...")
         _connectionState.value = ConnectionState.CONNECTING
 
-        bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        bluetoothGatt = device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     @SuppressLint("MissingPermission")
@@ -219,7 +229,17 @@ class BleConnectionManager(
                     gatt.requestMtu(512)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.i(TAG, "GATT Disconnected.")
+                    Log.i(TAG, "GATT Disconnected (status=$status). Cleaning up GATT resources.")
+                    try {
+                        gatt.close()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error closing GATT: ${e.message}")
+                    }
+                    if (bluetoothGatt == gatt) {
+                        bluetoothGatt = null
+                    }
+                    writeChar = null
+                    notifyChar = null
                     _connectionState.value = ConnectionState.DISCONNECTED
                 }
             }

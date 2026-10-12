@@ -14,6 +14,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.bandcompanion.app.MainActivity
 import com.bandcompanion.core.bluetooth.BleConnectionManager
+import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
 import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import com.bandcompanion.core.database.AppDatabase
 import com.bandcompanion.core.database.repository.DeviceRepository
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -112,22 +114,15 @@ class BandForegroundService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startBleLifecycle() {
+        // 1. Observe connection state transitions
         serviceScope.launch {
-            val primary = deviceRepo.getPrimaryDevice()
-            val mac = primary?.macAddress
-            val (authKey, secretKey) = if (mac != null) deviceRepo.getDeviceCredentials(mac) else Pair(null, null)
-
-            if (mac == null || secretKey == null) {
-                // Not bonded yet. Do not connect or hold BLE connection open!
-                updateNotification("Ready • Open app to pair Huawei Band")
-                return@launch
-            }
-
-            bleManager.connect(mac)
-
             bleManager.connectionState.collectLatest { state ->
                 when (state) {
                     BleConnectionManager.ConnectionState.SERVICES_DISCOVERED -> {
+                        val primary = deviceRepo.getPrimaryDevice()
+                        val mac = primary?.macAddress ?: return@collectLatest
+                        val (authKey, _) = deviceRepo.getDeviceCredentials(mac)
+
                         if (bleManager.protocolHandler.authState.value == BandProtocolHandler.AuthState.AUTHENTICATED) {
                             Log.i("BandForegroundService", "Already authenticated, enabling passive sensors and starting 3-min sync.")
                             bleManager.protocolHandler.enablePassiveHealthSettings()
@@ -142,11 +137,22 @@ class BandForegroundService : Service() {
                         val success = bleManager.protocolHandler.authenticateHandshake(storedAuthKeyHex = authKey)
 
                         if (success) {
+                            // Persist any updated keys (e.g. if opCode=1 was completed or keys refreshed)
+                            val newAuth = bleManager.protocolHandler.cachedAuthKey?.let { HiChain3Crypto.bytesToHex(it) }
+                            val newSec = bleManager.protocolHandler.cachedSecretKey?.let { HiChain3Crypto.bytesToHex(it) }
+                            if (newAuth != null && newSec != null) {
+                                Log.i("BandForegroundService", "Persisting refreshed auth keys to database for $mac...")
+                                deviceRepo.updateAuthKeys(mac, true, newAuth, newSec)
+                            }
+
                             bleManager.protocolHandler.executePostAuthBootstrap()
                             bleManager.protocolHandler.enablePassiveHealthSettings()
                             updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 92}%")
                             startKeepaliveLoop()
                             triggerDataSync()
+                        } else {
+                            Log.w("BandForegroundService", "Authentication failed, will retry on next cycle.")
+                            updateNotification("Disconnected • Waiting to reconnect...")
                         }
                     }
                     BleConnectionManager.ConnectionState.CONNECTED -> {
@@ -158,6 +164,31 @@ class BandForegroundService : Service() {
                     }
                     else -> Unit
                 }
+            }
+        }
+
+        // 2. Autonomous Connection Supervisor Loop
+        serviceScope.launch {
+            while (isActive) {
+                try {
+                    val primary = deviceRepo.getPrimaryDevice()
+                    val mac = primary?.macAddress
+                    val (_, secretKey) = if (mac != null) deviceRepo.getDeviceCredentials(mac) else Pair(null, null)
+
+                    if (mac == null || secretKey == null) {
+                        updateNotification("Ready • Open app to pair Huawei Band")
+                    } else {
+                        val curState = bleManager.connectionState.value
+                        if (curState == BleConnectionManager.ConnectionState.DISCONNECTED ||
+                            curState == BleConnectionManager.ConnectionState.ERROR) {
+                            Log.i("BandForegroundService", "Autonomous reconnect supervisor: attempting background auto-connect to $mac...")
+                            bleManager.connect(mac, autoConnect = true)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("BandForegroundService", "Autonomous reconnect supervisor error: ${e.message}")
+                }
+                delay(8000L) // Check every 8 seconds
             }
         }
     }
