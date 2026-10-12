@@ -168,4 +168,19 @@ class Lpv2ProtocolTest {
         val returnKey = HiChain3Crypto.deriveReturnKey(sessionKey, salt)
         assertEquals(32, returnKey.size)
     }
+
+    @Test
+    fun testPassiveHealthSettingsPayloads() {
+        val autoHrPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+        assertArrayEquals(byteArrayOf(0x01, 0x01, 0x01), autoHrPayload)
+
+        val autoSpo2Payload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+        assertArrayEquals(byteArrayOf(0x01, 0x01, 0x01), autoSpo2Payload)
+
+        val trusleepPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+        assertArrayEquals(byteArrayOf(0x01, 0x01, 0x01), trusleepPayload)
+
+        val sleepBreathPayload = VarIntTlv.encode(0x01, byteArrayOf(0x02))
+        assertArrayEquals(byteArrayOf(0x01, 0x01, 0x02), sleepBreathPayload)
+    }
 }

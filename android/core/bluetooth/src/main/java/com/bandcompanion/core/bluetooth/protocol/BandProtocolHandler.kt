@@ -63,6 +63,13 @@ class BandProtocolHandler(
         const val SVC_FITNESS = 0x02
         const val CMD_FITNESS_HISTORY = 0x03
 
+        const val SVC_HEALTH = 0x07
+        const val CMD_TRUSLEEP = 0x16
+        const val CMD_AUTO_HR = 0x17
+        const val CMD_AUTO_SPO2 = 0x24
+        const val SVC_BREATH = 0x2D
+        const val CMD_SLEEP_BREATH = 0x01
+
         const val SVC_DATA_SYNC = 0x2C
         const val CMD_DATA_SYNC = 0x01
         const val DICT_SLEEP_DETAILS = 700013
@@ -930,7 +937,71 @@ class BandProtocolHandler(
 
         _authState.value = AuthState.AUTHENTICATED
         Log.i(TAG, "executePostAuthBootstrap: bootstrap complete! Activation signal sent.")
+
+        // 12. Activate 24/7 continuous health monitoring on watch hardware
+        enablePassiveHealthSettings()
+
         return true
+    }
+
+    /**
+     * Activates 24/7 continuous sensor monitoring on Huawei Band 10 hardware:
+     * - TruSleep scientific sleep tracking (SVC 0x07 / CMD 0x16)
+     * - 24/7 continuous optical PPG heart rate monitoring (SVC 0x07 / CMD 0x17)
+     * - Automatic SpO2 blood oxygenation spot sampling (SVC 0x07 / CMD 0x24)
+     * - Sleep apnea and respiratory breathing monitoring (SVC 0x2D / CMD 0x01)
+     */
+    suspend fun enablePassiveHealthSettings(): Boolean {
+        if (cachedSecretKey == null) {
+            Log.w(TAG, "enablePassiveHealthSettings: cannot send settings before session key derivation")
+            return false
+        }
+        Log.i(TAG, "enablePassiveHealthSettings: activating 24/7 continuous health monitoring on watch...")
+        var success = true
+
+        // 1. TruSleep (0x07 / 0x16)
+        try {
+            val trusleepPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+            val resp = transactEncrypted(SVC_HEALTH, CMD_TRUSLEEP, trusleepPayload, timeoutMs = 6000)
+            Log.i(TAG, "enablePassiveHealthSettings: TruSleep activated (resp=${resp?.keys})")
+        } catch (e: Exception) {
+            Log.w(TAG, "enablePassiveHealthSettings: TruSleep enable error: ${e.message}")
+            success = false
+        }
+
+        // 2. Continuous Heart Rate (0x07 / 0x17)
+        try {
+            val hrPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+            sendEncryptedNoWait(SVC_HEALTH, CMD_AUTO_HR, hrPayload)
+            delay(150L)
+            Log.i(TAG, "enablePassiveHealthSettings: 24/7 Continuous PPG HR activated")
+        } catch (e: Exception) {
+            Log.w(TAG, "enablePassiveHealthSettings: Auto HR error: ${e.message}")
+            success = false
+        }
+
+        // 3. Automatic SpO2 (0x07 / 0x24)
+        try {
+            val spo2Payload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+            sendEncryptedNoWait(SVC_HEALTH, CMD_AUTO_SPO2, spo2Payload)
+            delay(150L)
+            Log.i(TAG, "enablePassiveHealthSettings: Automatic SpO2 sampling activated")
+        } catch (e: Exception) {
+            Log.w(TAG, "enablePassiveHealthSettings: Auto SpO2 error: ${e.message}")
+            success = false
+        }
+
+        // 4. Sleep Breath (0x2D / 0x01)
+        try {
+            val breathPayload = VarIntTlv.encode(0x01, byteArrayOf(0x02))
+            sendEncryptedNoWait(SVC_BREATH, CMD_SLEEP_BREATH, breathPayload)
+            delay(150L)
+            Log.i(TAG, "enablePassiveHealthSettings: Sleep breathing tracking activated")
+        } catch (e: Exception) {
+            Log.w(TAG, "enablePassiveHealthSettings: Sleep breath error: ${e.message}")
+        }
+
+        return success
     }
 
     private fun getTimezoneOffsetBytes(): ByteArray {
