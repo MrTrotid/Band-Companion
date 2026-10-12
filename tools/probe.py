@@ -309,7 +309,26 @@ async def main():
         print(f"Credentials saved to {CONFIG_FILE}. Subsequent runs will reconnect instantly.")
         print("=" * 60)
     except Exception as e:
-        logger.error("Probe failed: %s", e, exc_info=True)
+        err_msg = str(e)
+        logger.error("Probe failed: %s", e)
+        if "UNLIKELY_ERROR" in err_msg or "14" in err_msg or "AuthenticationFailed" in err_msg or "NotConnected" in err_msg:
+            print("\n" + "=" * 70)
+            print("🔒 BAND REJECTED SUBSCRIPTION (BOND CONFLICT DETECTED)")
+            print("=" * 70)
+            print("Root Cause:")
+            print("  The Huawei Band 10's security engine blocks new Bluetooth hosts")
+            print("  from subscribing to notifications while it is still bonded to another device")
+            print("  (such as the official Huawei Health app on your phone).")
+            print("\nHow to Resolve:")
+            print("  1. On your Huawei Band 10, open Settings -> System & updates (or System).")
+            print("  2. Tap 'Disconnect' (this puts the band in pairing mode WITHOUT deleting data).")
+            print("     [Or tap 'Reset' if you want a fresh factory reset].")
+            print("  3. The band will show a pairing / waiting screen.")
+            print("  4. Re-run this probe:")
+            print(f"       .venv/bin/python3 tools/probe.py {address}")
+            print("=" * 70 + "\n")
+        else:
+            logger.error("Traceback:", exc_info=True)
     finally:
         if client.client and client.client.is_connected:
             await client.client.disconnect()
