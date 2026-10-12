@@ -138,4 +138,28 @@ object HiChain3Crypto {
         if (aad.isNotEmpty()) cipher.updateAAD(aad)
         return cipher.doFinal(dataAndTag)
     }
+
+    fun aesCbcEncrypt(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+        val cipher = try {
+            Cipher.getInstance("AES/CBC/PKCS7Padding")
+        } catch (e: Exception) {
+            Cipher.getInstance("AES/CBC/PKCS5Padding")
+        }
+        val secretKeySpec = SecretKeySpec(key, "AES")
+        val ivSpec = IvParameterSpec(iv)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec)
+        return cipher.doFinal(data)
+    }
+
+    fun aesCbcDecrypt(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+        val cipher = try {
+            Cipher.getInstance("AES/CBC/PKCS7Padding")
+        } catch (e: Exception) {
+            Cipher.getInstance("AES/CBC/PKCS5Padding")
+        }
+        val secretKeySpec = SecretKeySpec(key, "AES")
+        val ivSpec = IvParameterSpec(iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivSpec)
+        return cipher.doFinal(ciphertext)
+    }
 }

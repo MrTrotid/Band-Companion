@@ -40,9 +40,12 @@ class BandProtocolHandler(
         const val CMD_HICHAIN_AUTH = 0x28
         const val CMD_PHONE_INFO = 0x10
         const val CMD_PRODUCT = 0x07
-        const val CMD_CONNECT_STATUS = 0x35
-        const val CMD_BATTERY = 0x0E
+        const val CMD_BATTERY = 0x08
         const val CMD_TIME_SYNC = 0x02
+        const val CMD_ACCEPT_AGREEMENT = 0x30
+        const val CMD_CONNECT_STATUS = 0x35
+        const val CMD_SETUP_DEVICE_STATUS = 0x3E
+        const val CMD_REVERSE_CAPABILITIES = 0x3F
 
         const val SVC_FITNESS = 0x02
         const val CMD_FITNESS_HISTORY = 0x03
@@ -84,6 +87,27 @@ class BandProtocolHandler(
     private var sessionKey: ByteArray? = null
     var cachedSecretKey: ByteArray? = null
     var cachedAuthKey: ByteArray? = null
+
+    var devSupportType: Int = 2
+    var encMethod: Int = 0
+    private var encCounter: Long = 0
+
+    private fun usesGcm(): Boolean = encMethod == 0x01 || devSupportType == 0x04
+
+    private fun nextCryptoIv(): ByteArray {
+        return if (devSupportType == 0x04) {
+            ByteArray(16).also { random.nextBytes(it) }
+        } else {
+            encCounter = if (encCounter == 0xFFFFFFFFL) 1L else encCounter + 1L
+            val rand = ByteArray(12).also { random.nextBytes(it) }
+            val cnt = ByteArray(4)
+            cnt[0] = ((encCounter ushr 24) and 0xFF).toByte()
+            cnt[1] = ((encCounter ushr 16) and 0xFF).toByte()
+            cnt[2] = ((encCounter ushr 8) and 0xFF).toByte()
+            cnt[3] = (encCounter and 0xFF).toByte()
+            rand + cnt
+        }
+    }
 
     private val random = SecureRandom()
 
@@ -243,7 +267,13 @@ class BandProtocolHandler(
         if (sliceSize < 100) {
             sliceSize = 244
         }
-        Log.i(TAG, "exchangeLinkParams: negotiated sliceSize=$sliceSize")
+        response.tlvs[0x07]?.let {
+            if (it.isNotEmpty()) devSupportType = it[0].toInt() and 0xFF
+        }
+        response.tlvs[0x0C]?.let {
+            if (it.isNotEmpty()) encMethod = it[0].toInt() and 0xFF
+        }
+        Log.i(TAG, "exchangeLinkParams: negotiated sliceSize=$sliceSize, devSupportType=$devSupportType, encMethod=$encMethod")
         _authState.value = AuthState.LINK_PARAMS_NEGOTIATED
         return true
     }
@@ -650,13 +680,17 @@ class BandProtocolHandler(
     }
 
     /**
-     * Encrypts a plaintext TLV payload using the negotiated secret_key via AES-GCM,
+     * Encrypts a plaintext TLV payload using the negotiated secret_key via AES-CBC (or AES-GCM),
      * packaging it into Huawei LPv2 CryptoTags (0x7C, 0x7D, 0x7E).
      */
     fun encryptTransactionTlv(plainTlv: ByteArray): ByteArray {
         val key = cachedSecretKey ?: throw IllegalStateException("Cannot encrypt transaction: cachedSecretKey is null")
-        val iv = ByteArray(16).also { random.nextBytes(it) }
-        val cipher = HiChain3Crypto.aesGcmEncrypt(plainTlv, key, iv, ByteArray(0))
+        val iv = nextCryptoIv()
+        val cipher = if (usesGcm()) {
+            HiChain3Crypto.aesGcmEncrypt(plainTlv, key, iv, ByteArray(0))
+        } else {
+            HiChain3Crypto.aesCbcEncrypt(plainTlv, key, iv)
+        }
         val tlv7C = VarIntTlv.encode(0x7C, byteArrayOf(0x01))
         val tlv7D = VarIntTlv.encode(0x7D, iv)
         val tlv7E = VarIntTlv.encode(0x7E, cipher)
@@ -674,7 +708,11 @@ class BandProtocolHandler(
         val iv = tlvs[0x7D] ?: return tlvs
         val cipher = tlvs[0x7E] ?: return tlvs
         return try {
-            val plain = HiChain3Crypto.aesGcmDecrypt(cipher, key, iv, ByteArray(0))
+            val plain = if (usesGcm()) {
+                HiChain3Crypto.aesGcmDecrypt(cipher, key, iv, ByteArray(0))
+            } else {
+                HiChain3Crypto.aesCbcDecrypt(cipher, key, iv)
+            }
             VarIntTlv.decodeAll(plain)
         } catch (e: Exception) {
             Log.w(TAG, "decryptTransactionTlvs decryption failed: ${e.message}")
@@ -697,26 +735,74 @@ class BandProtocolHandler(
     }
 
     /**
-     * Executes Post-Auth Connected Bootstrap:
-     * 1. Dispatches CMD_CONNECT_STATUS (0x01/0x35) -> Commands band firmware to dismiss pairing screen
-     * 2. Queries product info (0x01/0x07)
-     * 3. Dispatches CMD_TIME_SYNC (0x01/0x02) with timezone offset
-     * 4. Queries battery percentage (0x01/0x0E)
-     * 5. Waits for watch on-screen "Paired successfully" animation to complete
+     * Executes Post-Auth Connected Bootstrap matching tools/connect.py:
+     * 1. Accepts mandatory agreements (CMD_ACCEPT_AGREEMENT 0x01/0x30)
+     * 2. Sets reverse capabilities (CMD_REVERSE_CAPABILITIES 0x01/0x3F)
+     * 3. Sets up device status (CMD_SETUP_DEVICE_STATUS 0x01/0x3E)
+     * 4. Dispatches CMD_CONNECT_STATUS (0x01/0x35) -> Commands band to switch to active watch face!
+     * 5. Queries product info (CMD_PRODUCT 0x01/0x07)
+     * 6. Dispatches CMD_TIME_SYNC (0x01/0x02) with timezone offset
+     * 7. Queries battery percentage (CMD_BATTERY 0x01/0x08)
+     * 8. Waits for watch AMOLED screen animation to complete before finishing
      */
     suspend fun executePostAuthBootstrap(
         onStepUpdate: (String) -> Unit = {}
     ): Boolean {
         Log.i(TAG, "executePostAuthBootstrap: starting Huawei connected-state bootstrap...")
-        onStepUpdate("Pairing confirmed by watch! Setting up...")
+        onStepUpdate("Pairing confirmed! Configuring watch...")
 
-        // 1. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Dismisses the pairing screen on band!
+        // 1. Accept mandatory agreements (svc=0x01, cmd=0x30)
+        Log.i(TAG, "executePostAuthBootstrap: sending CMD_ACCEPT_AGREEMENT (cmd=0x30)...")
+        try {
+            val timestamp = System.currentTimeMillis().toString().toByteArray(Charsets.UTF_8)
+            val version = "20230508-20230508-0-0".toByteArray(Charsets.UTF_8)
+            val agreementKeys = listOf(
+                "software_update_service_statement",
+                "device_information_management",
+                "user_license_agreement"
+            )
+            val items = ByteArrayOutputStream()
+            for (key in agreementKeys) {
+                val itemContent = VarIntTlv.encode(0x03, key) +
+                        VarIntTlv.encode(0x04, byteArrayOf(0x01)) +
+                        VarIntTlv.encode(0x05, version) +
+                        VarIntTlv.encode(0x06, timestamp)
+                items.write(VarIntTlv.encode(0x82, itemContent))
+            }
+            val agreementPayload = VarIntTlv.encode(0x81, items.toByteArray())
+            val agreeResp = transactEncrypted(SVC_BASE, CMD_ACCEPT_AGREEMENT, agreementPayload, timeoutMs = 8000)
+            Log.i(TAG, "executePostAuthBootstrap: CMD_ACCEPT_AGREEMENT response: ${agreeResp?.keys}")
+        } catch (e: Exception) {
+            Log.w(TAG, "CMD_ACCEPT_AGREEMENT error: ${e.message}")
+        }
+
+        // 2. Send Reverse Capabilities (svc=0x01, cmd=0x3F)
+        Log.i(TAG, "executePostAuthBootstrap: sending CMD_REVERSE_CAPABILITIES (cmd=0x3F)...")
+        try {
+            val revCapPayload = VarIntTlv.encode(0x01, byteArrayOf(0xFD.toByte(), 0xF7.toByte(), 0x73, 0x7A))
+            transactEncrypted(SVC_BASE, CMD_REVERSE_CAPABILITIES, revCapPayload, timeoutMs = 8000)
+        } catch (e: Exception) {
+            Log.w(TAG, "CMD_REVERSE_CAPABILITIES error: ${e.message}")
+        }
+
+        // 3. Setup Device Status (svc=0x01, cmd=0x3E)
+        Log.i(TAG, "executePostAuthBootstrap: sending CMD_SETUP_DEVICE_STATUS (cmd=0x3E)...")
+        try {
+            val setupDevPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) +
+                    VarIntTlv.encode(0x02, "HUAWEI Band 10") +
+                    VarIntTlv.encode(0x03, byteArrayOf(0x00))
+            transactEncrypted(SVC_BASE, CMD_SETUP_DEVICE_STATUS, setupDevPayload, timeoutMs = 8000)
+        } catch (e: Exception) {
+            Log.w(TAG, "CMD_SETUP_DEVICE_STATUS error: ${e.message}")
+        }
+
+        // 4. Send CONNECT_STATUS (svc=0x01, cmd=0x35) -> Dismisses the pairing screen on band!
         Log.i(TAG, "executePostAuthBootstrap: sending CMD_CONNECT_STATUS (dismiss watch pairing screen)...")
         val connectStatusPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
         val connectResp = transactEncrypted(SVC_BASE, CMD_CONNECT_STATUS, connectStatusPayload, timeoutMs = 5000)
         Log.i(TAG, "executePostAuthBootstrap: CMD_CONNECT_STATUS response: ${connectResp?.keys}")
 
-        // 2. Product info query (svc=0x01, cmd=0x07)
+        // 5. Product info query (svc=0x01, cmd=0x07)
         try {
             val productTags = byteArrayOf(0x01, 0x02, 0x07, 0x09, 0x0A, 0x11)
             var prodTlv = ByteArray(0)
@@ -728,18 +814,18 @@ class BandProtocolHandler(
             Log.w(TAG, "Product query non-fatal error: ${e.message}")
         }
 
-        // 3. Time Sync (svc=0x01, cmd=0x02)
+        // 6. Time Sync (svc=0x01, cmd=0x02)
         val nowSec = (System.currentTimeMillis() / 1000).toInt()
         val tzBytes = getTimezoneOffsetBytes()
         val timePayload = VarIntTlv.encode(0x01, nowSec) + VarIntTlv.encode(0x02, tzBytes)
         transactEncrypted(SVC_BASE, CMD_TIME_SYNC, timePayload, timeoutMs = 5000)
 
-        // 4. Battery query (svc=0x01, cmd=0x0E)
+        // 7. Battery query (svc=0x01, cmd=0x08)
         queryBattery()
 
-        // 5. Allow 2.5 seconds for watch AMOLED screen animation to complete and display watch face
+        // 8. Allow 3.0 seconds for watch AMOLED screen animation to complete and display watch face
         onStepUpdate("Watch display ready! Finishing up...")
-        delay(2500L)
+        delay(3000L)
 
         _authState.value = AuthState.AUTHENTICATED
         Log.i(TAG, "executePostAuthBootstrap: bootstrap complete! Watch has dismissed pairing screen.")
@@ -756,15 +842,23 @@ class BandProtocolHandler(
     }
 
     /**
-     * Queries battery percentage (Cmd 0x01/0x0E).
+     * Queries battery percentage (Cmd 0x01/0x08).
      */
     suspend fun queryBattery(): Int? {
+        val payload = VarIntTlv.encode(0x01, ByteArray(0))
         val tlvs = if (cachedSecretKey != null) {
-            transactEncrypted(SVC_BASE, CMD_BATTERY, ByteArray(0), timeoutMs = 4000)
+            transactEncrypted(SVC_BASE, CMD_BATTERY, payload, timeoutMs = 4000)
         } else {
-            transact(SVC_BASE, CMD_BATTERY, ByteArray(0), timeoutMs = 4000)?.tlvs
+            transact(SVC_BASE, CMD_BATTERY, payload, timeoutMs = 4000)?.tlvs
         }
         tlvs?.get(0x01)?.let {
+            if (it.isNotEmpty()) {
+                val bat = it[0].toInt() and 0xFF
+                _batteryLevel.value = bat
+                return bat
+            }
+        }
+        tlvs?.get(0x02)?.let {
             if (it.isNotEmpty()) {
                 val bat = it[0].toInt() and 0xFF
                 _batteryLevel.value = bat
