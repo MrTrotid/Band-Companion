@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import os
 from typing import Tuple
+from cryptography.hazmat.primitives import padding as _padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -22,28 +23,31 @@ DIGEST_SECRETS = {
 GROUP_ID = "7B0BC0CBCE474F6C238D9661C63400B797B166EA7849B3A370FC73A9A236E989"
 
 
-def decrypt_pin(encrypted_pin: bytes, iv: bytes, auth_version: int = 1) -> str:
-    """Decrypt the 6-digit pairing PIN shown on the Huawei Band screen.
+def decrypt_pin_code(enc_method: int, auth_version: int, msg: bytes, iv: bytes) -> bytes:
+    """Decrypt the raw pairing PIN code bytes.
 
     The band sends encrypted PIN bytes and an IV on svc=0x01, cmd=0x2C.
-    Returns the decoded ASCII PIN string (e.g. '325533').
+    Returns the unpadded raw decrypted bytes.
     """
     key = DIGEST_SECRETS.get(auth_version, DIGEST_SECRETS[1])
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv[:16]))
-    decryptor = cipher.decryptor()
-    padded = decryptor.update(encrypted_pin) + decryptor.finalize()
+    if enc_method == 0x01:
+        return aes_gcm_decrypt(msg, key, iv[:12], b"")
+    
+    dec = Cipher(algorithms.AES(key), modes.CBC(iv[:16])).decryptor()
+    plain = dec.update(msg) + dec.finalize()
+    unpadder = _padding.PKCS7(128).unpadder()
+    try:
+        return unpadder.update(plain) + unpadder.finalize()
+    except Exception:
+        return plain.rstrip(b"\x00")
 
-    # The decrypted text contains hex ASCII representations of the digits
-    clean_text = padded.rstrip(b"\x00").decode("utf-8", errors="ignore")
-    return clean_text.strip()
 
-
-def derive_psk_first_auth(pin: str, seed: bytes) -> bytes:
+def derive_psk_first_auth(pin_bytes: bytes, seed: bytes) -> bytes:
     """Derive the Pre-Shared Key (PSK) for first authentication.
 
-    PSK = HMAC-SHA256(SHA256(hex(pin).encode('utf-8')), seed)
+    PSK = HMAC-SHA256(SHA256(hex(pin).upper().encode('utf-8')), seed)
     """
-    pin_hex_utf8 = pin.encode("utf-8").hex().encode("utf-8")
+    pin_hex_utf8 = pin_bytes.hex().upper().encode("utf-8")
     pin_hash = hashlib.sha256(pin_hex_utf8).digest()
     return hmac.new(pin_hash, seed, hashlib.sha256).digest()
 

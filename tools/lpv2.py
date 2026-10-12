@@ -110,6 +110,46 @@ def make_frame(svc_id: int, cmd_id: int, payload: bytes = b"") -> bytes:
     return frame_without_crc + crc
 
 
+def make_sliced_frames(svc_id: int, cmd_id: int, tlv: bytes, slice_size: int = 244) -> List[bytes]:
+    """Split a large TLV payload into sliced BLE frames.
+
+    Header: [0x5A][len+2 (2B)][slice_byte][flag][payload][CRC16]
+    slice_byte: 0x01 = first, 0x02 = middle, 0x03 = last
+    """
+    header_len = 5  # magic + len(2) + slice + flag
+    footer_len = 2  # CRC16
+    max_payload = slice_size - header_len - footer_len
+
+    chunks = []
+    pos = 0
+    first = True
+    total = len(tlv)
+
+    while pos < total or first:
+        avail = (max_payload - 2) if first else max_payload
+        chunk = tlv[pos : pos + avail]
+        pos += len(chunk)
+        last = pos >= total
+        first = False
+        chunks.append((chunk, last))
+
+    frames = []
+    flag = 0
+    for i, (chunk, last) in enumerate(chunks):
+        is_first = i == 0
+        slice_b = 0x01 if is_first else (0x03 if last else 0x02)
+        payload = (bytes([svc_id, cmd_id]) + chunk) if is_first else chunk
+
+        body_len = len(payload)
+        hdr = bytes([0x5A]) + (body_len + footer_len).to_bytes(2, byteorder="big") + bytes([slice_b, flag])
+        frame = hdr + payload
+        crc = calculate_crc16(frame)
+        frames.append(frame + crc)
+        flag = (flag + 1) & 0xFF
+
+    return frames
+
+
 def parse_frame(frame: bytes) -> Tuple[int, int, Dict[int, bytes]]:
     """Validate and parse an unsliced LPv2 frame.
 
