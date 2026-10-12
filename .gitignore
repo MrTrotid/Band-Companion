@@ -1,0 +1,22 @@
+# Python & Virtual Environments
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Band Connection & Secrets
+*.ini
+band.ini
+data/
+*.log
+*.sqlite
+*.db
+
+# Android & Gradle
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
