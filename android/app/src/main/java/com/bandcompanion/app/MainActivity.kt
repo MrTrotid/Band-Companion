@@ -256,8 +256,10 @@ fun MainAppContent(
                     }
 
                     pairingStatusText = "Starting pairing handshake..."
+                    val storedCreds = deviceRepo.getDeviceCredentials(selectedBand.macAddress)
+                    val fallbackKey = storedCreds.first ?: "0429b6f435665c7023bacbcb949c41f0d5032c53fb274bafa27284708f215baa"
                     val success = bleManager.protocolHandler.authenticateHandshake(
-                        storedAuthKeyHex = null,
+                        storedAuthKeyHex = fallbackKey,
                         forceFirstAuth = true,
                         onStepUpdate = { status ->
                             pairingStatusText = status

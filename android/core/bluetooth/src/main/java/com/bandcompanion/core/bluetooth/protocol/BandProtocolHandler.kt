@@ -87,6 +87,7 @@ class BandProtocolHandler(
     private var sessionKey: ByteArray? = null
     var cachedSecretKey: ByteArray? = null
     var cachedAuthKey: ByteArray? = null
+    private var fallbackAuthKey: ByteArray? = null
 
     var devSupportType: Int = 2
     var encMethod: Int = 0
@@ -483,6 +484,25 @@ class BandProtocolHandler(
             Log.e(TAG, "hichainAuthenticate: Failed to parse Round 1 response!")
             return false
         }
+        if (r1.isTlvAck) {
+            Log.i(TAG, "hichainAuthenticate: Band returned TLV ACK in Round 1 (watch already accepted auth). Cascading directly to bind pass (opCode=2)...")
+            if (cachedAuthKey == null && fallbackAuthKey != null) {
+                cachedAuthKey = fallbackAuthKey
+                Log.i(TAG, "hichainAuthenticate: Restored fallback authKey for bind pass: ${HiChain3Crypto.bytesToHex(fallbackAuthKey!!)}")
+            }
+            return if (cachedAuthKey != null) {
+                hichainAuthenticate(
+                    pinCode = ByteArray(0),
+                    opCode = 2,
+                    onStepUpdate = onStepUpdate,
+                    onUserPrompt = onUserPrompt
+                )
+            } else {
+                Log.w(TAG, "Band accepted auth via TLV ACK but no fallback auth key available.")
+                onStepUpdate("Please go to Settings -> System -> Disconnect on watch.")
+                false
+            }
+        }
         val p1 = r1.payload ?: run {
             Log.e(TAG, "hichainAuthenticate: Round 1 payload was null!")
             return false
@@ -653,8 +673,9 @@ class BandProtocolHandler(
         onStepUpdate("Negotiating security protocol...")
         val authType = negotiateSecurity()
 
+        fallbackAuthKey = storedAuthKeyHex?.let { HiChain3Crypto.hexToBytes(it) }
         if (!forceFirstAuth && storedAuthKeyHex != null) {
-            cachedAuthKey = HiChain3Crypto.hexToBytes(storedAuthKeyHex)
+            cachedAuthKey = fallbackAuthKey
         } else if (forceFirstAuth) {
             cachedAuthKey = null
             cachedSecretKey = null
