@@ -2,10 +2,10 @@ package com.bandcompanion.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Whoop / Oura Obsidian Athletic Theme
-val ObsidianBlack = Color(0xFF0D0E12)
-val ObsidianCard = Color(0xFF16181F)
-val ObsidianHighlight = Color(0xFF1E212B)
+// Middle-Ground Titanium Slate Theme (Sophisticated Dark Charcoal, Not Pitch Black)
+val ObsidianBlack = Color(0xFF1F222B)
+val ObsidianCard = Color(0xFF282C38)
+val ObsidianHighlight = Color(0xFF333847)
 
 // Background and Surface (Backwards Compatibility)
 val BackgroundDark = ObsidianBlack
@@ -45,13 +45,13 @@ val TextSecondary = Color(0xFF94A3B8)
 val TextMuted = Color(0xFF64748B)
 
 // Frosted Glass & Dribbble/Apple Capsule Dock Accents
-val GlassDockBackground = Color(0xEA12151F) // 92% translucent obsidian
-val GlassDockSurface = Color(0x991E2232)
-val GlassDockBorder = Color(0x4000F5D4)     // 25% specular teal highlight border
-val GlassDockBorderMuted = Color(0x26FFFFFF)// 15% white specular edge
-val GlassPillIndicator = Color(0x2E00F5D4)   // 18% teal glow behind active icon
-val NeonGlowPrimary = Color(0x4000BBF9)     // 25% cyan ambient glow
-val NeonGlowTeal = Color(0x4000F5D4)        // 25% teal ambient glow
+val GlassDockBackground = Color(0xF2252936) // 95% translucent titanium slate
+val GlassDockSurface = Color(0x99333847)
+val GlassDockBorder = Color(0x3300F5D4)     // 20% specular teal highlight border
+val GlassDockBorderMuted = Color(0x1FFFFFFF)// 12% white specular edge
+val GlassPillIndicator = Color(0x3300F5D4)   // 20% teal glow behind active icon
+val NeonGlowPrimary = Color(0x3300BBF9)     // 20% cyan ambient glow
+val NeonGlowTeal = Color(0x3300F5D4)        // 20% teal ambient glow
 
 // Connection Status Beacons
 val StatusConnectedGreen = Color(0xFF10B981)
