@@ -135,12 +135,12 @@ fun AthleticTopBar(
                 Brush.verticalGradient(
                     colors = listOf(
                         ObsidianBlack,
-                        GlassDockBackground.copy(alpha = 0.95f),
+                        ObsidianBlack.copy(alpha = 0.95f),
                         ObsidianBlack.copy(alpha = 0.85f)
                     )
                 )
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -151,7 +151,7 @@ fun AthleticTopBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 4.dp)
+                    .padding(end = 8.dp)
             ) {
                 Text(
                     text = "BAND COMPANION",
@@ -177,14 +177,15 @@ fun AthleticTopBar(
                 )
             }
 
-            // Right: Device Capsule & Action Buttons (Sync + Settings)
+            // Right: Device Capsule & Action Buttons (Sync + Settings) - Exactly 32dp height for perfect baseline alignment
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Connection Status Capsule
+                // Connection Status Capsule (32dp height)
                 Box(
                     modifier = Modifier
+                        .height(32.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF282C38))
                         .border(
@@ -195,14 +196,15 @@ fun AthleticTopBar(
                             shape = RoundedCornerShape(16.dp)
                         )
                         .clickable(enabled = !isBonded) { onPairClick() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 9.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         // Radar Beacon Canvas
-                        Canvas(modifier = Modifier.size(12.dp)) {
+                        Canvas(modifier = Modifier.size(10.dp)) {
                             val center = Offset(size.width / 2f, size.height / 2f)
                             val baseRadius = 3.dp.toPx()
 
@@ -258,10 +260,8 @@ fun AthleticTopBar(
                     }
                 }
 
-                // Quick Sync Action Button
-                IconButton(
-                    onClick = onSyncClick,
-                    enabled = !isSyncing,
+                // Quick Sync Action Button (32dp circle)
+                Box(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
@@ -271,6 +271,8 @@ fun AthleticTopBar(
                             if (isSyncing) ElectricCyan.copy(alpha = 0.8f) else GlassDockBorderMuted,
                             CircleShape
                         )
+                        .clickable(enabled = !isSyncing) { onSyncClick() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
@@ -282,14 +284,15 @@ fun AthleticTopBar(
                     )
                 }
 
-                // Top-Right Settings Action Button
-                IconButton(
-                    onClick = onSettingsClick,
+                // Top-Right Settings Action Button (32dp circle)
+                Box(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF282C38))
                         .border(0.75.dp, GlassDockBorderMuted, CircleShape)
+                        .clickable { onSettingsClick() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,

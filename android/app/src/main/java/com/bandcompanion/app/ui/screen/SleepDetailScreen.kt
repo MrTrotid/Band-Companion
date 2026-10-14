@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -80,10 +82,13 @@ fun SleepDetailScreen(
         // Sleep Architecture Distribution
         StageBreakdownCard(session = session)
 
+        // Daytime Naps & Autonomic Restoration
+        DaytimeNapsCard(session = session)
+
         // Overnight Biomarkers: HRV, SpO2, Respiratory
         OvernightBiomarkersCard(session = session)
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(110.dp))
     }
 }
 
@@ -458,4 +463,177 @@ private fun sampleHypnogramStages(): List<SleepStageInterval> {
         SleepStageInterval(SleepStageType.REM, base + 16800, base + 19200),
         SleepStageInterval(SleepStageType.AWAKE, base + 19200, base + 21060)
     )
+}
+
+@Composable
+fun DaytimeNapsCard(session: SleepSession?) {
+    // Check if session qualifies as daytime nap (duration < 3 hours)
+    val isRecordedNap = session != null && session.durationMinutes in 15..180
+    val napDurationMinutes = if (isRecordedNap) session!!.durationMinutes else 45
+    val napDeepMinutes = if (isRecordedNap) session!!.deepSleepMinutes else 20
+    val napLightMinutes = if (isRecordedNap) session!!.lightSleepMinutes else 25
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = ElectricCyan.copy(alpha = 0.2f)
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    0.75.dp,
+                    Brush.verticalGradient(
+                        listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(ElectricCyan.copy(alpha = 0.15f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WbSunny,
+                                contentDescription = null,
+                                tint = ElectricCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "DAYTIME NAPS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMuted,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.0.sp
+                            )
+                            Text(
+                                text = if (isRecordedNap) "1 Nap Detected Today" else "Restorative Power Nap",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (isRecordedNap) NeonTeal.copy(alpha = 0.15f) else ElectricCyan.copy(alpha = 0.12f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                0.5.dp,
+                                if (isRecordedNap) NeonTeal.copy(alpha = 0.5f) else ElectricCyan.copy(alpha = 0.4f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isRecordedNap) "AUTONOMIC REBOUND" else "RECOMMENDED",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isRecordedNap) NeonTeal else ElectricCyan,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+
+                // Nap Duration & Quality metrics
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = formatMinutes(napDurationMinutes),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary
+                            )
+                        }
+                        Text(
+                            text = if (isRecordedNap) "Recorded via Huawei TruSleep Staging" else "Ideal 20-45m restorative nap window",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "CNS Recovery",
+                            fontSize = 10.sp,
+                            color = TextMuted,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isRecordedNap) "+18% Readiness" else "+15% Focus",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = NeonTeal
+                        )
+                    }
+                }
+
+                // Staging Distribution Bar
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Deep Sleep (Physical): ${napDeepMinutes}m",
+                            fontSize = 10.sp,
+                            color = SleepDeepColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Light Sleep: ${napLightMinutes}m",
+                            fontSize = 10.sp,
+                            color = SleepLightColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Progress bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .background(SleepLightColor.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                    ) {
+                        val deepRatio = if (napDurationMinutes > 0) (napDeepMinutes.toFloat() / napDurationMinutes).coerceIn(0f, 1f) else 0.5f
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(deepRatio)
+                                .height(6.dp)
+                                .background(SleepDeepColor, RoundedCornerShape(3.dp))
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

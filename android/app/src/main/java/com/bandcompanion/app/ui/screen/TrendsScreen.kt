@@ -84,7 +84,7 @@ fun TrendsScreen(
         // Resting Heart Rate Baseline Stability
         RhrBaselineCard()
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(110.dp))
     }
 }
 

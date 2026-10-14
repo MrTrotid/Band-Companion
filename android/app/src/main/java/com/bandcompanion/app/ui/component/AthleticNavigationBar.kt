@@ -9,6 +9,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +41,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,11 +85,32 @@ fun AthleticNavigationBar(
 ) {
     val tabs = NavigationTab.values()
     val continuousOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
+    val coroutineScope = rememberCoroutineScope()
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { delta ->
+                    coroutineScope.launch {
+                        pagerState.dispatchRawDelta(-delta)
+                    }
+                },
+                onDragStopped = { velocity ->
+                    coroutineScope.launch {
+                        val targetPage = if (velocity < -300f) {
+                            (pagerState.currentPage + 1).coerceAtMost(tabs.size - 1)
+                        } else if (velocity > 300f) {
+                            (pagerState.currentPage - 1).coerceAtLeast(0)
+                        } else {
+                            pagerState.targetPage
+                        }
+                        pagerState.animateScrollToPage(targetPage)
+                    }
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         // Floating glass capsule container
@@ -194,17 +220,6 @@ fun AthleticNavigationBar(
                                     fontSize = 9.sp,
                                     fontWeight = if (proximity > 0.5f) FontWeight.Black else FontWeight.SemiBold,
                                     letterSpacing = 0.6.sp
-                                )
-
-                                // Active glowing micro-dot
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(3.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (proximity > 0.5f) ElectricCyan.copy(alpha = proximity) else Color.Transparent
-                                        )
                                 )
                             }
                         }
@@ -356,16 +371,6 @@ fun AthleticNavigationBar(
                                     fontSize = 9.sp,
                                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
                                     letterSpacing = 0.6.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(3.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (isSelected) ElectricCyan else Color.Transparent
-                                        )
                                 )
                             }
                         }

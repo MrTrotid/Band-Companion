@@ -236,10 +236,11 @@ class BandForegroundService : Service() {
         cal.set(Calendar.MINUTE, 0)
         cal.set(Calendar.SECOND, 0)
         cal.set(Calendar.MILLISECOND, 0)
-        val todayMidnight = cal.timeInMillis
+        val todayMidnightSec = cal.timeInMillis / 1000L
+        val nowSec = now / 1000L
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
 
-        val todaySamples = sampleRepo.getSamplesBetweenSync(devId, todayMidnight, now)
+        val todaySamples = sampleRepo.getSamplesBetweenSync(devId, todayMidnightSec, nowSec)
         if (todaySamples.isNotEmpty()) {
             val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
             val hrSamples = todaySamples.mapNotNull { it.heartRate }
@@ -258,6 +259,9 @@ class BandForegroundService : Service() {
                     c.get(Calendar.HOUR_OF_DAY)
                 }.distinct().size
 
+            val spo2Samples = todaySamples.mapNotNull { it.spo2 }
+            val avgSpo2 = if (spo2Samples.isNotEmpty()) spo2Samples.average().toFloat() else null
+
             val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
             val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
                 totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
@@ -266,7 +270,8 @@ class BandForegroundService : Service() {
                 standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
                 restingHeartRate = restingHr ?: existing?.restingHeartRate,
                 minHeartRate = minHr ?: existing?.minHeartRate,
-                maxHeartRate = maxHr ?: existing?.maxHeartRate
+                maxHeartRate = maxHr ?: existing?.maxHeartRate,
+                avgSpo2 = avgSpo2 ?: existing?.avgSpo2
             )
             summaryRepo.saveSummary(devId, updatedSummary)
         }

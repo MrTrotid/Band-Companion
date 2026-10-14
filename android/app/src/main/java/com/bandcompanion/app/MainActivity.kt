@@ -78,6 +78,7 @@ import com.bandcompanion.core.database.repository.SampleRepository
 import com.bandcompanion.core.database.repository.SleepRepository
 import com.bandcompanion.core.database.repository.SummaryRepository
 import com.bandcompanion.core.database.repository.WeightRepository
+import com.bandcompanion.core.model.DailySummary
 import com.bandcompanion.core.model.DeviceInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -247,28 +248,60 @@ fun MainAppContent(
     val devId = primaryDevice?.macAddress ?: "C4:16:88:8D:04:EF"
 
     val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    val todayMidnight = remember {
+    val todayMidnightSec = remember {
         val c = Calendar.getInstance()
         c.set(Calendar.HOUR_OF_DAY, 0)
         c.set(Calendar.MINUTE, 0)
         c.set(Calendar.SECOND, 0)
         c.set(Calendar.MILLISECOND, 0)
-        c.timeInMillis
+        c.timeInMillis / 1000L
     }
-    val now = remember { System.currentTimeMillis() }
+    val nowSec = remember { (System.currentTimeMillis() / 1000L) + 86400L }
 
     val todaySummary by summaryRepo.getSummaryForDate(devId, todayStr).collectAsState(initial = null)
     val recentSummaries by summaryRepo.getRecentSummaries(devId, 30).collectAsState(initial = emptyList())
     val latestSleepSession by sleepRepo.getLatestSleepSession(devId).collectAsState(initial = null)
     val latestMood by moodRepo.getLatestMood(devId).collectAsState(initial = null)
     val latestWeight by weightRepo.getLatestEntry().collectAsState(initial = null)
-    val todaySamples by sampleRepo.getSamplesBetween(devId, todayMidnight, now).collectAsState(initial = emptyList())
+    val todaySamples by sampleRepo.getSamplesBetween(devId, todayMidnightSec, nowSec).collectAsState(initial = emptyList())
     val currentPulse by bleManager.protocolHandler.fitnessDataFlow
         .map { list -> list.lastOrNull { it.heartRate != null }?.heartRate }
         .collectAsState(initial = null)
 
     val liveBattery by bleManager.protocolHandler.batteryLevel.collectAsState()
     val effectiveBattery = liveBattery ?: primaryDevice?.batteryLevel
+
+    LaunchedEffect(todaySamples) {
+        if (todaySamples.isNotEmpty()) {
+            val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
+            val hrSamples = todaySamples.mapNotNull { it.heartRate }
+            val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
+            val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
+            val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null
+            val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 40 }
+            val calories = (totalSteps * 0.045f).toInt()
+            val standHours = todaySamples.filter { (it.steps ?: 0) >= 60 }
+                .map {
+                    val c = Calendar.getInstance().apply { timeInMillis = it.timestamp * 1000L }
+                    c.get(Calendar.HOUR_OF_DAY)
+                }.distinct().size
+            val spo2List = todaySamples.mapNotNull { it.spo2 }
+            val avgSpo2 = if (spo2List.isNotEmpty()) spo2List.average().toFloat() else null
+
+            val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
+            val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
+                totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
+                activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
+                caloriesBurned = if (calories > 0) calories else existing?.caloriesBurned ?: 0,
+                standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
+                restingHeartRate = restingHr ?: existing?.restingHeartRate,
+                minHeartRate = minHr ?: existing?.minHeartRate,
+                maxHeartRate = maxHr ?: existing?.maxHeartRate,
+                avgSpo2 = avgSpo2 ?: existing?.avgSpo2
+            )
+            summaryRepo.saveSummary(devId, updatedSummary)
+        }
+    }
 
     LaunchedEffect(isLiveConnected) {
         if (isLiveConnected) {
@@ -483,7 +516,7 @@ fun MainAppContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             if (isSettingsOpen) {
                 SettingsScreen(
