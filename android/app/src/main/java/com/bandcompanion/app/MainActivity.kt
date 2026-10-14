@@ -557,6 +557,7 @@ fun MainAppContent(
                             hrSamples = todaySamples,
                             currentPulseBpm = currentPulse,
                             isSyncing = isSyncing,
+                            isLiveConnected = isLiveConnected,
                             weather = weatherCondition,
                             isSyncingWeather = isSyncingWeather,
                             onSyncWeatherClick = {

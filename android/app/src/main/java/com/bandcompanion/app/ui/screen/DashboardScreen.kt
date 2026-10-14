@@ -61,6 +61,7 @@ import com.bandcompanion.app.ui.component.LogWeightDialog
 import com.bandcompanion.app.ui.component.MoodCheckInDialog
 import com.bandcompanion.app.ui.component.OxygenationCard
 import com.bandcompanion.app.ui.component.SleepPerformanceCard
+import com.bandcompanion.app.ui.component.WatchHeroCard
 import com.bandcompanion.app.ui.component.WeatherCard
 import com.bandcompanion.app.ui.component.WeightBmiCard
 import com.bandcompanion.app.ui.theme.CrimsonStrain
@@ -100,6 +101,7 @@ fun DashboardScreen(
     hrSamples: List<SampleMetric> = emptyList(),
     currentPulseBpm: Int? = null,
     isSyncing: Boolean = false,
+    isLiveConnected: Boolean = false,
     weather: WeatherCondition = WeatherCondition(21, 2, "Partly Cloudy", "San Francisco", 3, 34),
     isSyncingWeather: Boolean = false,
     onSyncWeatherClick: () -> Unit = {},
@@ -178,13 +180,27 @@ fun DashboardScreen(
             UnbondedSetupCard(onPairClick = onPairClick)
         }
 
-        // Whoop / Oura Recovery & Strain Macro Row
+        // Hardware Overview: Centered Huawei Band 10 with Radiating Callout Arrows
+        WatchHeroCard(
+            deviceInfo = deviceInfo,
+            currentPulseBpm = currentPulseBpm,
+            todaySteps = todaySummary?.totalSteps,
+            isLiveConnected = isLiveConnected,
+            onWatchfaceClick = onOpenWatchfacesClick,
+            onPulseClick = { },
+            onActivityClick = { },
+            onStressClick = onOpenStressTestClick
+        )
+
+        // 1. Recovery & Cardiovascular Strain
+        DashboardSectionHeader(title = "DAILY RECOVERY & STRAIN")
         AthleticRecoveryStrainRow(
             recoveryScore = recoveryScore,
             dailyStrain = dailyStrain
         )
 
-        // 1. Concentric 4-Ring Activity Canvas Engine
+        // 2. Concentric 4-Ring Activity Canvas Engine
+        DashboardSectionHeader(title = "4-RING ACTIVITY ENGINE")
         ConcentricActivityRings(
             stepCount = todaySummary?.totalSteps ?: 0,
             stepTarget = 10000,
@@ -284,14 +300,16 @@ fun DashboardScreen(
             }
         }
 
-        // Live Weather Push & Forecast Card
+        // Atmospheric Conditions & Weather Push
+        DashboardSectionHeader(title = "ATMOSPHERIC CONDITIONS")
         WeatherCard(
             weather = weather,
             isSyncingWeather = isSyncingWeather,
             onSyncWeatherClick = onSyncWeatherClick
         )
 
-        // 2. Cardiovascular Strain & 24/7 Continuous PPG Curve
+        // 3. Cardiovascular Strain & 24/7 Continuous PPG Curve
+        DashboardSectionHeader(title = "CARDIOVASCULAR HEALTH")
         HeartRateCard(
             currentBpm = currentPulseBpm ?: todaySummary?.restingHeartRate,
             restingBpm = todaySummary?.restingHeartRate,
@@ -300,28 +318,32 @@ fun DashboardScreen(
             hrSamples = hrSamples
         )
 
-        // 3. TruSleep™ Staging & Sleep Performance
+        // 4. TruSleep™ Staging & Sleep Performance
+        DashboardSectionHeader(title = "TRUSLEEP™ STAGING & REST")
         SleepPerformanceCard(
             sleepSession = latestSleepSession,
             overnightHrvMs = todaySummary?.avgHrv,
             respiratoryRate = 14.6f
         )
 
-        // 4. Blood Oxygenation (SpO2)
+        // 5. Blood Oxygenation (SpO2)
+        DashboardSectionHeader(title = "BLOOD OXYGENATION")
         OxygenationCard(
             currentSpo2 = todaySummary?.avgSpo2 ?: 98f,
             minSpo2 = 96f,
             maxSpo2 = 99f
         )
 
-        // 5. Emotional Wellbeing & Autonomic Stress
+        // 6. Emotional Wellbeing & Autonomic Stress
+        DashboardSectionHeader(title = "AUTONOMIC NERVOUS SYSTEM")
         EmotionalWellbeingCard(
             stressScore = todaySummary?.stressScore ?: 34,
             latestMood = latestMood,
             onLogMoodClick = { showMoodDialog = true }
         )
 
-        // 6. Body Composition & BMI Tracker
+        // 7. Body Composition & BMI Tracker
+        DashboardSectionHeader(title = "BODY COMPOSITION")
         WeightBmiCard(
             latestWeight = latestWeight,
             onLogWeightClick = { showWeightDialog = true }
@@ -329,6 +351,21 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
     }
+}
+
+@Composable
+fun DashboardSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelSmall,
+        color = TextMuted,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = 1.0.sp,
+        modifier = modifier.padding(start = 4.dp, top = 2.dp)
+    )
 }
 
 @Composable
