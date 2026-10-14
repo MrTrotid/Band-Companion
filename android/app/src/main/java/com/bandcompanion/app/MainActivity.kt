@@ -27,6 +27,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Bedtime
@@ -195,6 +197,7 @@ enum class NavigationTab(val label: String, val icon: androidx.compose.ui.graphi
     TRENDS("Discover", Icons.AutoMirrored.Filled.ShowChart)
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @SuppressLint("MissingPermission")
 @Composable
 fun MainAppContent(
@@ -210,7 +213,6 @@ fun MainAppContent(
     onSyncRequested: () -> Unit,
     onStartService: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
     var isSyncing by remember { mutableStateOf(false) }
     var isPairingOpen by remember { mutableStateOf(false) }
     var pairingStatusText by remember { mutableStateOf<String?>(null) }
@@ -264,6 +266,20 @@ fun MainAppContent(
     val currentPulse by bleManager.protocolHandler.fitnessDataFlow
         .map { list -> list.lastOrNull { it.heartRate != null }?.heartRate }
         .collectAsState(initial = null)
+
+    val liveBattery by bleManager.protocolHandler.batteryLevel.collectAsState()
+    val effectiveBattery = liveBattery ?: primaryDevice?.batteryLevel
+
+    LaunchedEffect(isLiveConnected) {
+        if (isLiveConnected) {
+            val bat = bleManager.protocolHandler.queryBattery()
+            if (bat != null) {
+                deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
+            }
+        }
+    }
+
+    val pagerState = rememberPagerState(initialPage = 0) { NavigationTab.values().size }
 
     if (isPairingOpen) {
         PairingScreen(
@@ -425,6 +441,7 @@ fun MainAppContent(
             if (!isSettingsOpen) {
                 AthleticTopBar(
                     deviceInfo = primaryDevice,
+                    batteryLevel = effectiveBattery,
                     isLiveConnected = isLiveConnected,
                     isLiveConnecting = isLiveConnecting,
                     isSyncing = isSyncing,
@@ -432,7 +449,11 @@ fun MainAppContent(
                         isSyncing = true
                         onSyncRequested()
                         coroutineScope.launch {
-                            delay(3000)
+                            val bat = bleManager.protocolHandler.queryBattery()
+                            if (bat != null) {
+                                deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
+                            }
+                            delay(2000)
                             isSyncing = false
                         }
                     },
@@ -449,8 +470,12 @@ fun MainAppContent(
         bottomBar = {
             if (!isSettingsOpen) {
                 AthleticNavigationBar(
-                    selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it }
+                    pagerState = pagerState,
+                    onTabSelected = { targetPage ->
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(targetPage)
+                        }
+                    }
                 )
             }
         }
@@ -514,40 +539,11 @@ fun MainAppContent(
                     onOpenStressTestClick = { isStressTestOpen = true }
                 )
             } else {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = {
-                        val isForward = targetState.ordinal > initialState.ordinal
-                        val slideDirection = if (isForward) 1 else -1
-                        (slideInHorizontally(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            initialOffsetX = { width -> slideDirection * (width / 4) }
-                        ) + fadeIn(
-                            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
-                        ) + scaleIn(
-                            initialScale = 0.98f,
-                            animationSpec = tween(durationMillis = 260)
-                        )).togetherWith(
-                            slideOutHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow
-                                ),
-                                targetOffsetX = { width -> -slideDirection * (width / 4) }
-                            ) + fadeOut(
-                                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                            ) + scaleOut(
-                                targetScale = 0.98f,
-                                animationSpec = tween(durationMillis = 200)
-                            )
-                        )
-                    },
-                    label = "tabScreenTransition"
-                ) { targetTab ->
-                    when (targetTab) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    when (NavigationTab.values()[page]) {
                         NavigationTab.DASHBOARD -> DashboardScreen(
                             deviceInfo = primaryDevice,
                             todaySummary = todaySummary,
@@ -587,7 +583,11 @@ fun MainAppContent(
                                 isSyncing = true
                                 onSyncRequested()
                                 coroutineScope.launch {
-                                    delay(3000)
+                                    val bat = bleManager.protocolHandler.queryBattery()
+                                    if (bat != null) {
+                                        deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
+                                    }
+                                    delay(2000)
                                     isSyncing = false
                                 }
                             },

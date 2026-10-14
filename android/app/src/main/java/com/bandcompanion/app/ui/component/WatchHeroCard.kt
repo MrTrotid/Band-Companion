@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bandcompanion.app.ui.theme.ElectricCyan
@@ -92,6 +93,7 @@ fun WatchHeroCard(
     deviceInfo: DeviceInfo?,
     currentPulseBpm: Int?,
     todaySteps: Int?,
+    batteryLevel: Int? = null,
     isLiveConnected: Boolean,
     onWatchfaceClick: () -> Unit,
     onPulseClick: () -> Unit,
@@ -306,7 +308,7 @@ fun WatchHeroCard(
 
                         CalloutCard(
                             title = "9-Axis IMU",
-                            subtitle = "4-Ring Activity",
+                            subtitle = "Activity Rings",
                             icon = Icons.AutoMirrored.Filled.DirectionsRun,
                             accentColor = NeonTeal,
                             isLeft = true,
@@ -655,13 +657,17 @@ private fun CalloutCard(
                         text = title,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = subtitle,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium,
-                        color = TextMuted
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             } else {
@@ -670,13 +676,17 @@ private fun CalloutCard(
                         text = title,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = subtitle,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium,
-                        color = TextMuted
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 

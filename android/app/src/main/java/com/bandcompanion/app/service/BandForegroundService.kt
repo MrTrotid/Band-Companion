@@ -199,13 +199,18 @@ class BandForegroundService : Service() {
             while (true) {
                 try {
                     val battery = bleManager.protocolHandler.queryBattery()
+                    val devId = deviceRepo.getPrimaryDevice()?.macAddress ?: "C4:16:88:8D:04:EF"
+                    val now = System.currentTimeMillis()
+                    val batVal = battery ?: bleManager.protocolHandler.batteryLevel.value
+                    if (batVal != null) {
+                        deviceRepo.updateBatteryAndSync(devId, batVal, now)
+                    }
                     bleManager.protocolHandler.enablePassiveHealthSettings()
                     triggerDataSync()
-                    val devId = deviceRepo.getPrimaryDevice()?.macAddress ?: "C4:16:88:8D:04:EF"
                     val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                     val summary = summaryRepo.getSummaryForDateSync(devId, today)
                     val stepsText = if (summary != null && summary.totalSteps > 0) "${summary.totalSteps} steps • " else ""
-                    val batText = battery ?: bleManager.protocolHandler.batteryLevel.value ?: 98
+                    val batText = batVal ?: 77
                     updateNotification("Connected • ${stepsText}Battery $batText%")
                 } catch (e: Exception) {
                     Log.w("BandForegroundService", "Keepalive/sync cycle error: ${e.message}")

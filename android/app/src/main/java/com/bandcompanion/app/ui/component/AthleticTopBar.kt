@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,6 +75,7 @@ import java.util.Locale
 @Composable
 fun AthleticTopBar(
     deviceInfo: DeviceInfo?,
+    batteryLevel: Int? = null,
     isLiveConnected: Boolean = false,
     isLiveConnecting: Boolean = false,
     isSyncing: Boolean = false,
@@ -84,6 +86,7 @@ fun AthleticTopBar(
 ) {
     val dateString = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()).uppercase()
     val isBonded = deviceInfo?.isBonded == true
+    val effectiveBattery = batteryLevel ?: deviceInfo?.batteryLevel
 
     // Infinite transition for continuous subtle animations
     val infiniteTransition = rememberInfiniteTransition(label = "topBarRadar")
@@ -145,38 +148,22 @@ fun AthleticTopBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Left: Brand Title & Today's Date
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "BAND COMPANION",
-                        style = androidx.compose.ui.text.TextStyle(
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.0.sp
-                        )
-                    )
-
-                    // Small neon badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(ElectricCyan.copy(alpha = 0.15f))
-                            .border(0.5.dp, ElectricCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "BAND 10",
-                            color = ElectricCyan,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 4.dp)
+            ) {
+                Text(
+                    text = "BAND COMPANION",
+                    style = androidx.compose.ui.text.TextStyle(
+                        color = TextPrimary,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.2.sp
+                    ),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
 
                 Spacer(modifier = Modifier.height(2.dp))
 
@@ -185,48 +172,49 @@ fun AthleticTopBar(
                     color = TextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1
                 )
             }
 
             // Right: Device Capsule & Action Buttons (Sync + Settings)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Connection Status Capsule
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF282C38))
                         .border(
                             width = 0.75.dp,
                             brush = Brush.horizontalGradient(
                                 colors = listOf(beaconColor.copy(alpha = 0.5f), GlassDockBorderMuted)
                             ),
-                            shape = RoundedCornerShape(20.dp)
+                            shape = RoundedCornerShape(16.dp)
                         )
                         .clickable(enabled = !isBonded) { onPairClick() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         // Radar Beacon Canvas
-                        Canvas(modifier = Modifier.size(16.dp)) {
+                        Canvas(modifier = Modifier.size(12.dp)) {
                             val center = Offset(size.width / 2f, size.height / 2f)
-                            val baseRadius = 4.dp.toPx()
+                            val baseRadius = 3.dp.toPx()
 
                             // Expanding pulse wave when active or connecting
                             if (isLiveConnected || isLiveConnecting) {
-                                val waveRadius = baseRadius + (pulseProgress * 4.dp.toPx())
+                                val waveRadius = baseRadius + (pulseProgress * 3.dp.toPx())
                                 val waveAlpha = (1f - pulseProgress).coerceIn(0f, 1f) * 0.6f
                                 drawCircle(
                                     color = beaconColor.copy(alpha = waveAlpha),
                                     radius = waveRadius,
                                     center = center,
-                                    style = Stroke(width = 1.5.dp.toPx())
+                                    style = Stroke(width = 1.25.dp.toPx())
                                 )
                             }
 
@@ -241,29 +229,29 @@ fun AthleticTopBar(
                         Text(
                             text = statusText,
                             color = if (isLiveConnected) TextPrimary else beaconColor,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.4.sp
+                            letterSpacing = 0.3.sp
                         )
 
                         // Battery indicator if connected
-                        val battery = deviceInfo?.batteryLevel
+                        val battery = effectiveBattery
                         if (isBonded && battery != null && isLiveConnected) {
                             Text(
                                 text = "•",
                                 color = TextMuted,
-                                fontSize = 10.sp
+                                fontSize = 9.sp
                             )
                             Icon(
                                 imageVector = Icons.Default.BatteryChargingFull,
                                 contentDescription = "Battery",
                                 tint = if (battery > 20) NeonTeal else StatusConnectingAmber,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(11.dp)
                             )
                             Text(
                                 text = "$battery%",
                                 color = TextPrimary,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -271,9 +259,11 @@ fun AthleticTopBar(
                 }
 
                 // Quick Sync Action Button
-                Box(
+                IconButton(
+                    onClick = onSyncClick,
+                    enabled = !isSyncing,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF282C38))
                         .border(
@@ -281,34 +271,31 @@ fun AthleticTopBar(
                             if (isSyncing) ElectricCyan.copy(alpha = 0.8f) else GlassDockBorderMuted,
                             CircleShape
                         )
-                        .clickable(enabled = !isSyncing) { onSyncClick() },
-                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Sync",
                         tint = if (isSyncing) ElectricCyan else TextSecondary,
                         modifier = Modifier
-                            .size(18.dp)
+                            .size(16.dp)
                             .rotate(if (isSyncing) syncRotation else 0f)
                     )
                 }
 
                 // Top-Right Settings Action Button
-                Box(
+                IconButton(
+                    onClick = onSettingsClick,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF282C38))
                         .border(0.75.dp, GlassDockBorderMuted, CircleShape)
-                        .clickable { onSettingsClick() },
-                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
                         tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

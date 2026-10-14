@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -67,17 +68,18 @@ import kotlin.math.roundToInt
  * Features:
  * - Floating rounded capsule geometry elevated from screen edge
  * - Glassmorphic obsidian translucent backdrop with specular gradient rim stroke
- * - Spring-animated sliding illuminated indicator pill that glides behind the active item
- * - Bouncy scale pop and glowing micro-dot on active tab
+ * - Continuous 1:1 liquid gesture tracking: indicator glides with HorizontalPager swipe
+ * - Dynamic icon scaling and glowing micro-dot on active tab
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AthleticNavigationBar(
-    selectedTab: NavigationTab,
-    onTabSelected: (NavigationTab) -> Unit,
+    pagerState: PagerState,
+    onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tabs = NavigationTab.values()
-    val selectedIndex = tabs.indexOf(selectedTab).coerceAtLeast(0)
+    val continuousOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
 
     Box(
         modifier = modifier
@@ -115,22 +117,12 @@ fun AthleticNavigationBar(
                 val totalWidth = maxWidth
                 val tabWidth = totalWidth / tabs.size
 
-                // Smooth sliding spring-animated indicator pill
-                val animatedPillOffset by animateFloatAsState(
-                    targetValue = selectedIndex.toFloat(),
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
-                    label = "pillOffset"
-                )
-
-                // Glowing neon pill behind active tab
+                // Glowing neon pill that tracks touch drag in real-time with 0 lag
                 Box(
                     modifier = Modifier
                         .offset {
                             IntOffset(
-                                x = (animatedPillOffset * tabWidth.toPx()).roundToInt(),
+                                x = (continuousOffset * tabWidth.toPx()).roundToInt(),
                                 y = 0
                             )
                         }
@@ -165,9 +157,157 @@ fun AthleticNavigationBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     tabs.forEachIndexed { index, tab ->
+                        val distanceToSelected = kotlin.math.abs(continuousOffset - index)
+                        val proximity = (1f - distanceToSelected).coerceIn(0f, 1f)
+                        val iconScale = 1.0f + (0.15f * proximity)
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    onTabSelected(index)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.label,
+                                    tint = if (proximity > 0.5f) ElectricCyan else TextMuted,
+                                    modifier = Modifier
+                                        .size(23.dp)
+                                        .scale(iconScale)
+                                )
+
+                                Spacer(modifier = Modifier.height(3.dp))
+
+                                Text(
+                                    text = tab.label.uppercase(),
+                                    color = if (proximity > 0.5f) TextPrimary else TextMuted,
+                                    fontSize = 9.sp,
+                                    fontWeight = if (proximity > 0.5f) FontWeight.Black else FontWeight.SemiBold,
+                                    letterSpacing = 0.6.sp
+                                )
+
+                                // Active glowing micro-dot
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(3.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (proximity > 0.5f) ElectricCyan.copy(alpha = proximity) else Color.Transparent
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AthleticNavigationBar(
+    selectedTab: NavigationTab,
+    onTabSelected: (NavigationTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tabs = NavigationTab.values()
+    val selectedIndex = tabs.indexOf(selectedTab).coerceAtLeast(0)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .shadow(
+                    elevation = 20.dp,
+                    shape = RoundedCornerShape(34.dp),
+                    ambientColor = NeonCyanRing.copy(alpha = 0.25f),
+                    spotColor = ElectricCyan.copy(alpha = 0.35f)
+                )
+                .clip(RoundedCornerShape(34.dp))
+                .background(GlassDockBackground)
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            GlassDockBorder.copy(alpha = 0.7f),
+                            GlassDockBorderMuted.copy(alpha = 0.25f),
+                            Color(0x0DFFFFFF),
+                            GlassDockBorder.copy(alpha = 0.4f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(34.dp)
+                )
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val totalWidth = maxWidth
+                val tabWidth = totalWidth / tabs.size
+
+                val animatedPillOffset by animateFloatAsState(
+                    targetValue = selectedIndex.toFloat(),
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "pillOffset"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                x = (animatedPillOffset * tabWidth.toPx()).roundToInt(),
+                                y = 0
+                            )
+                        }
+                        .width(tabWidth)
+                        .fillMaxHeight()
+                        .padding(horizontal = 4.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    ElectricCyan.copy(alpha = 0.22f),
+                                    NeonTeal.copy(alpha = 0.10f)
+                                )
+                            )
+                        )
+                        .border(
+                            width = 0.75.dp,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    ElectricCyan.copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            ),
+                            shape = RoundedCornerShape(28.dp)
+                        )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    tabs.forEachIndexed { index, tab ->
                         val isSelected = tab == selectedTab
 
-                        // Bouncy scale animation for active tab icon
                         val iconScale by animateFloatAsState(
                             targetValue = if (isSelected) 1.15f else 1.0f,
                             animationSpec = spring(
@@ -177,7 +317,6 @@ fun AthleticNavigationBar(
                             label = "iconScale"
                         )
 
-                        // Smooth color interpolation
                         val contentColor by animateColorAsState(
                             targetValue = if (isSelected) ElectricCyan else TextMuted,
                             animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
@@ -219,7 +358,6 @@ fun AthleticNavigationBar(
                                     letterSpacing = 0.6.sp
                                 )
 
-                                // Active glowing micro-dot
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Box(
                                     modifier = Modifier
