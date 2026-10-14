@@ -43,3 +43,18 @@ val SleepAwakeColor = Color(0xFFFFB703)    // Awake (Amber)
 val TextPrimary = Color(0xFFF8FAFC)
 val TextSecondary = Color(0xFF94A3B8)
 val TextMuted = Color(0xFF64748B)
+
+// Frosted Glass & Dribbble/Apple Capsule Dock Accents
+val GlassDockBackground = Color(0xEA12151F) // 92% translucent obsidian
+val GlassDockSurface = Color(0x991E2232)
+val GlassDockBorder = Color(0x4000F5D4)     // 25% specular teal highlight border
+val GlassDockBorderMuted = Color(0x26FFFFFF)// 15% white specular edge
+val GlassPillIndicator = Color(0x2E00F5D4)   // 18% teal glow behind active icon
+val NeonGlowPrimary = Color(0x4000BBF9)     // 25% cyan ambient glow
+val NeonGlowTeal = Color(0x4000F5D4)        // 25% teal ambient glow
+
+// Connection Status Beacons
+val StatusConnectedGreen = Color(0xFF10B981)
+val StatusConnectingAmber = Color(0xFFF59E0B)
+val StatusDisconnectedRed = Color(0xFFEF4444)
+
