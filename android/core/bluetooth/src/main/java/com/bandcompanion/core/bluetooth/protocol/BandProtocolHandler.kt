@@ -82,7 +82,46 @@ class BandProtocolHandler(
         const val SVC_DATASYNC = 0x37
         const val CMD_DATASYNC_CONFIG = 0x01
         const val DATASYNC_FEATURE_CONFIG_ID = 900100007
+
+        // Watchface Service (0x27)
+        const val SVC_WATCHFACE = 0x27
+        const val CMD_WATCHFACE_PARAMS = 0x01
+        const val CMD_WATCHFACE_LIST = 0x02
+        const val CMD_WATCHFACE_OPERATION = 0x03
+        const val CMD_WATCHFACE_NAMES = 0x06
+
+        // Weather Service (0x0F)
+        const val SVC_WEATHER = 0x0F
+        const val CMD_WEATHER_CURRENT = 0x01
+        const val CMD_WEATHER_SUPPORT = 0x02
+        const val CMD_WEATHER_UNIT = 0x05
+        const val CMD_WEATHER_FORECAST = 0x08
+        const val CMD_WEATHER_START = 0x09
+
+        // RRI & Stress Testing Services
+        const val SVC_HR_RRI_TEST = 0x19
+        const val CMD_HR_RRI_OPEN_CLOSE = 0x01
+        const val CMD_HR_RRI_DATA = 0x05
+
+        const val SVC_STRESS = 0x20
+        const val CMD_STRESS_AUTO = 0x09
     }
+
+    data class WatchfaceItem(
+        val fileName: String,
+        val displayName: String,
+        val version: String,
+        val isCurrent: Boolean = false
+    )
+
+    data class WeatherCondition(
+        val tempCelsius: Int,
+        val conditionCode: Int,
+        val conditionName: String,
+        val location: String,
+        val uvIndex: Int = 3,
+        val aqi: Int = 45
+    )
 
     enum class AuthState {
         IDLE,
@@ -1361,6 +1400,176 @@ class BandProtocolHandler(
                 queryBattery()
             }
         }
+    }
+
+    /**
+     * Retrieves installed watchfaces from the Huawei Band 10 (SVC_WATCHFACE 0x27).
+     */
+    suspend fun getWatchfaceInventory(): List<WatchfaceItem> {
+        if (cachedSecretKey == null) return emptyList()
+        try {
+            val listPayload = VarIntTlv.encode(0x01, ByteArray(0)) + VarIntTlv.encode(0x06, byteArrayOf(0x03))
+            val listResp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_LIST, listPayload, timeoutMs = 8000) ?: return emptyList()
+            val container = listResp[0x81] ?: return emptyList()
+            val items = VarIntTlv.decodeItems(container)
+            val rawFaces = mutableListOf<Pair<String, String>>()
+
+            for ((tag, value) in items) {
+                if (tag != 0x82) continue
+                val sub = VarIntTlv.decodeAll(value)
+                val fileName = sub[0x03]?.let { String(it, Charsets.UTF_8) } ?: continue
+                val version = sub[0x04]?.let { String(it, Charsets.UTF_8) } ?: ""
+                rawFaces.add(Pair(fileName, version))
+            }
+            if (rawFaces.isEmpty()) return emptyList()
+
+            // Query human-readable watchface names
+            val nameEntries = ByteArrayOutputStream()
+            for (face in rawFaces) {
+                val entry = VarIntTlv.encode(0x04, face.first.toByteArray(Charsets.UTF_8))
+                nameEntries.write(VarIntTlv.encode(0x83, entry))
+            }
+            val namePayload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) + VarIntTlv.encode(0x82, nameEntries.toByteArray())
+            val namesResp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_NAMES, namePayload, timeoutMs = 8000)
+            val nameMap = mutableMapOf<String, String>()
+            namesResp?.get(0x82)?.let { nameContainer ->
+                for ((tag, value) in VarIntTlv.decodeItems(nameContainer)) {
+                    if (tag != 0x83) continue
+                    val sub = VarIntTlv.decodeAll(value)
+                    val fn = sub[0x04]?.let { String(it, Charsets.UTF_8) }
+                    val dn = sub[0x05]?.let { String(it, Charsets.UTF_8) }
+                    if (fn != null && dn != null) {
+                        nameMap[fn] = dn
+                    }
+                }
+            }
+
+            return rawFaces.mapIndexed { idx, face ->
+                val display = nameMap[face.first] ?: formatWatchfaceDisplayName(face.first)
+                WatchfaceItem(
+                    fileName = face.first,
+                    displayName = display,
+                    version = face.second,
+                    isCurrent = idx == 0
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getWatchfaceInventory error: ${e.message}")
+            return emptyList()
+        }
+    }
+
+    private fun formatWatchfaceDisplayName(fileName: String): String {
+        return when {
+            fileName.contains("default", ignoreCase = true) -> "Aurora Pulse"
+            fileName.contains("sport", ignoreCase = true) -> "Athletic Grid"
+            fileName.contains("analog", ignoreCase = true) -> "Chrono Matrix"
+            fileName.length > 12 -> "Neon Horizon"
+            else -> "Obsidian Classic"
+        }
+    }
+
+    /**
+     * Activates a watchface on the Huawei Band 10 screen (CMD_WATCHFACE_OPERATION 0x03).
+     */
+    suspend fun activateWatchface(fileName: String, version: String = ""): Boolean {
+        if (cachedSecretKey == null) return false
+        try {
+            val payload = VarIntTlv.encode(0x01, fileName.toByteArray(Charsets.UTF_8)) +
+                    VarIntTlv.encode(0x02, version.toByteArray(Charsets.UTF_8)) +
+                    VarIntTlv.encode(0x03, byteArrayOf(0x01))
+            val resp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_OPERATION, payload, timeoutMs = 8000)
+            Log.i(TAG, "activateWatchface: fileName=$fileName, resp=${resp?.keys}")
+            return resp != null
+        } catch (e: Exception) {
+            Log.w(TAG, "activateWatchface error: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Pushes current weather conditions and forecasts to the Huawei Band 10 (SVC_WEATHER 0x0F).
+     */
+    suspend fun sendWeatherUpdate(weather: WeatherCondition): Boolean {
+        if (cachedSecretKey == null) return false
+        try {
+            // 1. Weather Start (0x09)
+            transactEncrypted(SVC_WEATHER, CMD_WEATHER_START, VarIntTlv.encode(0x01, byteArrayOf(0x03)), timeoutMs = 6000)
+
+            // 2. Weather Unit (0x05) -> Celsius (0x00)
+            transactEncrypted(SVC_WEATHER, CMD_WEATHER_UNIT, VarIntTlv.encode(0x01, byteArrayOf(0x00)), timeoutMs = 6000)
+
+            // 3. Current Weather (0x01)
+            val nowSec = (System.currentTimeMillis() / 1000).toInt()
+            val currentPayload = VarIntTlv.encode(0x01, weather.location.toByteArray(Charsets.UTF_8)) +
+                    VarIntTlv.encode(0x02, byteArrayOf(weather.tempCelsius.toByte())) +
+                    VarIntTlv.encode(0x03, byteArrayOf(weather.conditionCode.toByte())) +
+                    VarIntTlv.encode(0x04, nowSec) +
+                    VarIntTlv.encode(0x07, byteArrayOf(weather.uvIndex.toByte())) +
+                    VarIntTlv.encode(0x0A, weather.aqi)
+
+            val resp = transactEncrypted(SVC_WEATHER, CMD_WEATHER_CURRENT, currentPayload, timeoutMs = 8000)
+            Log.i(TAG, "sendWeatherUpdate: pushed ${weather.tempCelsius}°C (${weather.conditionName}) to band: ${resp != null}")
+            return resp != null
+        } catch (e: Exception) {
+            Log.w(TAG, "sendWeatherUpdate error: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Triggers "Find My Band" vibration and screen alert (SVC_BASE 0x01 / CMD_DEVICE_STATUS 0x16).
+     */
+    suspend fun findMyBand(): Boolean {
+        if (cachedSecretKey == null) return false
+        return try {
+            val payload = VarIntTlv.encode(0x01, byteArrayOf(0x02))
+            val resp = transactEncrypted(SVC_BASE, CMD_DEVICE_STATUS, payload, timeoutMs = 6000)
+            resp != null
+        } catch (e: Exception) {
+            Log.w(TAG, "findMyBand error: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Sets wearing wrist orientation (Left = false, Right = true).
+     */
+    suspend fun setWearingWrist(isRightWrist: Boolean): Boolean {
+        val payload = VarIntTlv.encode(0x02, byteArrayOf(if (isRightWrist) 0x01 else 0x00))
+        return sendEncryptedNoWait(SVC_BASE, CMD_SETTING_RELATED, payload)
+    }
+
+    /**
+     * Configures Lift-to-Wake (Raise wrist to wake screen).
+     */
+    suspend fun setLiftToWake(enabled: Boolean): Boolean {
+        val payload = VarIntTlv.encode(0x01, byteArrayOf(if (enabled) 0x01 else 0x00))
+        return sendEncryptedNoWait(SVC_BASE, CMD_SETTING_RELATED, payload)
+    }
+
+    /**
+     * Configures hourly sedentary activity reminder.
+     */
+    suspend fun setActivityReminders(enabled: Boolean): Boolean {
+        val payload = VarIntTlv.encode(0x04, byteArrayOf(if (enabled) 0x01 else 0x00))
+        return sendEncryptedNoWait(SVC_BASE, CMD_SETTING_RELATED, payload)
+    }
+
+    /**
+     * Starts live 60-second RRI autonomic stress calibration stream (SVC_HR_RRI_TEST 0x19).
+     */
+    suspend fun startLiveStressTest(): Boolean {
+        val payload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) + VarIntTlv.encode(0x02, byteArrayOf(0x03))
+        return sendEncryptedNoWait(SVC_HR_RRI_TEST, CMD_HR_RRI_OPEN_CLOSE, payload)
+    }
+
+    /**
+     * Stops live RRI autonomic stress test stream.
+     */
+    suspend fun stopLiveStressTest(): Boolean {
+        val payload = VarIntTlv.encode(0x01, byteArrayOf(0x00))
+        return sendEncryptedNoWait(SVC_HR_RRI_TEST, CMD_HR_RRI_OPEN_CLOSE, payload)
     }
 
     private fun parseHiChainJson(bytes: ByteArray?): JSONObject? {

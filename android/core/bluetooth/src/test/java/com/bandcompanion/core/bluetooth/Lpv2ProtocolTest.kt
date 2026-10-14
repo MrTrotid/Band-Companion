@@ -227,4 +227,41 @@ class Lpv2ProtocolTest {
         assertEquals(98, features["spo2"])
         assertEquals(60, features["resting_heart_rate"])
     }
+
+    @Test
+    fun testWatchfaceOperationPayload() {
+        val fileName = "test_watchface.hwt"
+        val version = "1.0.0"
+        val payload = VarIntTlv.encode(0x01, fileName.toByteArray(Charsets.UTF_8)) +
+                VarIntTlv.encode(0x02, version.toByteArray(Charsets.UTF_8)) +
+                VarIntTlv.encode(0x03, byteArrayOf(0x01))
+        val decoded = VarIntTlv.decodeAll(payload)
+        assertEquals("test_watchface.hwt", String(decoded[0x01]!!, Charsets.UTF_8))
+        assertEquals("1.0.0", String(decoded[0x02]!!, Charsets.UTF_8))
+        assertEquals(0x01, decoded[0x03]!![0].toInt())
+    }
+
+    @Test
+    fun testWeatherPayloadEncoding() {
+        val location = "San Francisco"
+        val temp = 18
+        val condition = 2 // Cloudy
+        val payload = VarIntTlv.encode(0x01, location.toByteArray(Charsets.UTF_8)) +
+                VarIntTlv.encode(0x02, byteArrayOf(temp.toByte())) +
+                VarIntTlv.encode(0x03, byteArrayOf(condition.toByte()))
+        val decoded = VarIntTlv.decodeAll(payload)
+        assertEquals("San Francisco", String(decoded[0x01]!!, Charsets.UTF_8))
+        assertEquals(18, decoded[0x02]!![0].toInt())
+        assertEquals(2, decoded[0x03]!![0].toInt())
+    }
+
+    @Test
+    fun testHardwareSettingsPayload() {
+        val wristPayload = VarIntTlv.encode(0x02, byteArrayOf(0x01)) // right wrist
+        val liftWakePayload = VarIntTlv.encode(0x01, byteArrayOf(0x01))
+        val findBandPayload = VarIntTlv.encode(0x01, byteArrayOf(0x02))
+        assertEquals(0x01, VarIntTlv.decodeAll(wristPayload)[0x02]!![0].toInt())
+        assertEquals(0x01, VarIntTlv.decodeAll(liftWakePayload)[0x01]!![0].toInt())
+        assertEquals(0x02, VarIntTlv.decodeAll(findBandPayload)[0x01]!![0].toInt())
+    }
 }
