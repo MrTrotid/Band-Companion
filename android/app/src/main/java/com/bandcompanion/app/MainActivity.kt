@@ -66,6 +66,7 @@ import com.bandcompanion.core.bluetooth.BleConnectionManager
 import com.bandcompanion.core.bluetooth.BleScanner
 import com.bandcompanion.core.bluetooth.DiscoveredBand
 import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler.WatchfaceItem
 import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler.WeatherCondition
 import com.bandcompanion.core.database.AppDatabase
@@ -191,8 +192,7 @@ enum class NavigationTab(val label: String, val icon: androidx.compose.ui.graphi
     DASHBOARD("Health", Icons.Default.Dashboard),
     SLEEP("Sleep", Icons.Default.Bedtime),
     LIVE("Exercise", Icons.Default.Favorite),
-    TRENDS("Discover", Icons.AutoMirrored.Filled.ShowChart),
-    SETTINGS("Me", Icons.Default.Settings)
+    TRENDS("Discover", Icons.AutoMirrored.Filled.ShowChart)
 }
 
 @SuppressLint("MissingPermission")
@@ -226,9 +226,18 @@ fun MainAppContent(
     var isSyncingWeather by remember { mutableStateOf(false) }
     var weatherCondition by remember { mutableStateOf(WeatherCondition(21, 2, "Partly Cloudy", "San Francisco", 3, 34)) }
     var installedWatchfaces by remember { mutableStateOf<List<WatchfaceItem>>(emptyList()) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    val connectionState by bleManager.connectionState.collectAsState()
+    val authState by bleManager.protocolHandler.authState.collectAsState()
+    val isLiveConnected = connectionState == BleConnectionManager.ConnectionState.SERVICES_DISCOVERED &&
+            authState == BandProtocolHandler.AuthState.AUTHENTICATED
+    val isLiveConnecting = connectionState == BleConnectionManager.ConnectionState.CONNECTING ||
+            (connectionState == BleConnectionManager.ConnectionState.SERVICES_DISCOVERED &&
+                    authState != BandProtocolHandler.AuthState.AUTHENTICATED)
 
     val discoveredBands by bleScanner.discoveredBands.collectAsState()
     val isScanning by bleScanner.isScanning.collectAsState()
@@ -413,31 +422,37 @@ fun MainAppContent(
     Scaffold(
         containerColor = ObsidianBlack,
         topBar = {
-            AthleticTopBar(
-                deviceInfo = primaryDevice,
-                isSyncing = isSyncing,
-                onSyncClick = {
-                    isSyncing = true
-                    onSyncRequested()
-                    coroutineScope.launch {
-                        delay(3000)
-                        isSyncing = false
+            if (!isSettingsOpen) {
+                AthleticTopBar(
+                    deviceInfo = primaryDevice,
+                    isLiveConnected = isLiveConnected,
+                    isLiveConnecting = isLiveConnecting,
+                    isSyncing = isSyncing,
+                    onSyncClick = {
+                        isSyncing = true
+                        onSyncRequested()
+                        coroutineScope.launch {
+                            delay(3000)
+                            isSyncing = false
+                        }
+                    },
+                    onPairClick = {
+                        isPairingOpen = true
+                        bleScanner.startScan()
+                    },
+                    onSettingsClick = {
+                        isSettingsOpen = true
                     }
-                },
-                onPairClick = {
-                    isPairingOpen = true
-                    bleScanner.startScan()
-                },
-                onSettingsClick = {
-                    selectedTab = NavigationTab.SETTINGS
-                }
-            )
+                )
+            }
         },
         bottomBar = {
-            AthleticNavigationBar(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
+            if (!isSettingsOpen) {
+                AthleticNavigationBar(
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it }
+                )
+            }
         }
     ) { innerPadding ->
         Box(
@@ -445,157 +460,163 @@ fun MainAppContent(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    val isForward = targetState.ordinal > initialState.ordinal
-                    val slideDirection = if (isForward) 1 else -1
-                    (slideInHorizontally(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        ),
-                        initialOffsetX = { width -> slideDirection * (width / 4) }
-                    ) + fadeIn(
-                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
-                    ) + scaleIn(
-                        initialScale = 0.98f,
-                        animationSpec = tween(durationMillis = 260)
-                    )).togetherWith(
-                        slideOutHorizontally(
+            if (isSettingsOpen) {
+                SettingsScreen(
+                    deviceInfo = primaryDevice,
+                    isLiveConnected = isLiveConnected,
+                    isLiveConnecting = isLiveConnecting,
+                    onBackClick = { isSettingsOpen = false },
+                    onExportCsvClick = {
+                        coroutineScope.launch {
+                            val currentEpochSec = System.currentTimeMillis() / 1000
+                            val monthAgo = currentEpochSec - (30 * 86400)
+                            val file = exportManager.exportSamplesToCsv(devId, monthAgo, currentEpochSec)
+                            Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onExportJsonClick = {
+                        coroutineScope.launch {
+                            val file = exportManager.exportFullJson(devId)
+                            Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onFindBandClick = {
+                        coroutineScope.launch {
+                            val ok = bleManager.protocolHandler.findMyBand()
+                            Toast.makeText(context, if (ok) "Band 10 is vibrating!" else "Find command sent", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onWristChanged = { isRight ->
+                        coroutineScope.launch {
+                            bleManager.protocolHandler.setWearingWrist(isRight)
+                            Toast.makeText(context, if (isRight) "Wrist: Right" else "Wrist: Left", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onLiftToWakeChanged = { enabled ->
+                        coroutineScope.launch {
+                            bleManager.protocolHandler.setLiftToWake(enabled)
+                        }
+                    },
+                    onActivityReminderChanged = { enabled ->
+                        coroutineScope.launch {
+                            bleManager.protocolHandler.setActivityReminders(enabled)
+                        }
+                    },
+                    onOpenWatchfacesClick = {
+                        coroutineScope.launch {
+                            val faces = bleManager.protocolHandler.getWatchfaceInventory()
+                            if (faces.isNotEmpty()) {
+                                installedWatchfaces = faces
+                            }
+                            isWatchfaceGalleryOpen = true
+                        }
+                    },
+                    onOpenStressTestClick = { isStressTestOpen = true }
+                )
+            } else {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val isForward = targetState.ordinal > initialState.ordinal
+                        val slideDirection = if (isForward) 1 else -1
+                        (slideInHorizontally(
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioNoBouncy,
                                 stiffness = Spring.StiffnessMediumLow
                             ),
-                            targetOffsetX = { width -> -slideDirection * (width / 4) }
-                        ) + fadeOut(
-                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                        ) + scaleOut(
-                            targetScale = 0.98f,
-                            animationSpec = tween(durationMillis = 200)
+                            initialOffsetX = { width -> slideDirection * (width / 4) }
+                        ) + fadeIn(
+                            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                        ) + scaleIn(
+                            initialScale = 0.98f,
+                            animationSpec = tween(durationMillis = 260)
+                        )).togetherWith(
+                            slideOutHorizontally(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                targetOffsetX = { width -> -slideDirection * (width / 4) }
+                            ) + fadeOut(
+                                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                            ) + scaleOut(
+                                targetScale = 0.98f,
+                                animationSpec = tween(durationMillis = 200)
+                            )
                         )
-                    )
-                },
-                label = "tabScreenTransition"
-            ) { targetTab ->
-                when (targetTab) {
-                    NavigationTab.DASHBOARD -> DashboardScreen(
-                        deviceInfo = primaryDevice,
-                        todaySummary = todaySummary,
-                        latestSleepSession = latestSleepSession,
-                        latestMood = latestMood,
-                        latestWeight = latestWeight,
-                        hrSamples = todaySamples,
-                        currentPulseBpm = currentPulse,
-                        isSyncing = isSyncing,
-                        weather = weatherCondition,
-                        isSyncingWeather = isSyncingWeather,
-                        onSyncWeatherClick = {
-                            isSyncingWeather = true
-                            coroutineScope.launch {
-                                val ok = bleManager.protocolHandler.sendWeatherUpdate(weatherCondition)
-                                delay(1500)
-                                isSyncingWeather = false
-                                if (ok) {
-                                    Toast.makeText(context, "Weather pushed to Band 10!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Weather synced locally", Toast.LENGTH_SHORT).show()
+                    },
+                    label = "tabScreenTransition"
+                ) { targetTab ->
+                    when (targetTab) {
+                        NavigationTab.DASHBOARD -> DashboardScreen(
+                            deviceInfo = primaryDevice,
+                            todaySummary = todaySummary,
+                            latestSleepSession = latestSleepSession,
+                            latestMood = latestMood,
+                            latestWeight = latestWeight,
+                            hrSamples = todaySamples,
+                            currentPulseBpm = currentPulse,
+                            isSyncing = isSyncing,
+                            weather = weatherCondition,
+                            isSyncingWeather = isSyncingWeather,
+                            onSyncWeatherClick = {
+                                isSyncingWeather = true
+                                coroutineScope.launch {
+                                    val ok = bleManager.protocolHandler.sendWeatherUpdate(weatherCondition)
+                                    delay(1500)
+                                    isSyncingWeather = false
+                                    if (ok) {
+                                        Toast.makeText(context, "Weather pushed to Band 10!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Weather synced locally", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            onOpenWatchfacesClick = {
+                                coroutineScope.launch {
+                                    val faces = bleManager.protocolHandler.getWatchfaceInventory()
+                                    if (faces.isNotEmpty()) {
+                                        installedWatchfaces = faces
+                                    }
+                                    isWatchfaceGalleryOpen = true
+                                }
+                            },
+                            onOpenStressTestClick = { isStressTestOpen = true },
+                            onSyncClick = {
+                                isSyncing = true
+                                onSyncRequested()
+                                coroutineScope.launch {
+                                    delay(3000)
+                                    isSyncing = false
+                                }
+                            },
+                            onPairClick = {
+                                isPairingOpen = true
+                                bleScanner.startScan()
+                            },
+                            onLogMood = { mood, energy, note ->
+                                coroutineScope.launch {
+                                    moodRepo.logMood(devId, mood, energy, note)
+                                    Toast.makeText(context, "Mood logged: $mood", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onLogWeight = { weight, height, note ->
+                                coroutineScope.launch {
+                                    weightRepo.logWeight(weight, height, note)
+                                    Toast.makeText(context, "Weight logged: %.1f kg".format(weight), Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        },
-                        onOpenWatchfacesClick = {
-                            coroutineScope.launch {
-                                val faces = bleManager.protocolHandler.getWatchfaceInventory()
-                                if (faces.isNotEmpty()) {
-                                    installedWatchfaces = faces
-                                }
-                                isWatchfaceGalleryOpen = true
-                            }
-                        },
-                        onOpenStressTestClick = { isStressTestOpen = true },
-                        onSyncClick = {
-                            isSyncing = true
-                            onSyncRequested()
-                            coroutineScope.launch {
-                                delay(3000)
-                                isSyncing = false
-                            }
-                        },
-                        onPairClick = {
-                            isPairingOpen = true
-                            bleScanner.startScan()
-                        },
-                        onLogMood = { mood, energy, note ->
-                            coroutineScope.launch {
-                                moodRepo.logMood(devId, mood, energy, note)
-                                Toast.makeText(context, "Mood logged: $mood", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        onLogWeight = { weight, height, note ->
-                            coroutineScope.launch {
-                                weightRepo.logWeight(weight, height, note)
-                                Toast.makeText(context, "Weight logged: %.1f kg".format(weight), Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-                    NavigationTab.SLEEP -> SleepDetailScreen(
-                        session = latestSleepSession
-                    )
-                    NavigationTab.LIVE -> LiveMetricsScreen(
-                        latestSample = null
-                    )
-                    NavigationTab.TRENDS -> TrendsScreen(
-                        summaries = recentSummaries
-                    )
-                    NavigationTab.SETTINGS -> SettingsScreen(
-                        deviceInfo = primaryDevice,
-                        onExportCsvClick = {
-                            coroutineScope.launch {
-                                val currentEpochSec = System.currentTimeMillis() / 1000
-                                val monthAgo = currentEpochSec - (30 * 86400)
-                                val file = exportManager.exportSamplesToCsv(devId, monthAgo, currentEpochSec)
-                                Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        onExportJsonClick = {
-                            coroutineScope.launch {
-                                val file = exportManager.exportFullJson(devId)
-                                Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        onFindBandClick = {
-                            coroutineScope.launch {
-                                val ok = bleManager.protocolHandler.findMyBand()
-                                Toast.makeText(context, if (ok) "Band 10 is vibrating!" else "Find command sent", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        onWristChanged = { isRight ->
-                            coroutineScope.launch {
-                                bleManager.protocolHandler.setWearingWrist(isRight)
-                                Toast.makeText(context, if (isRight) "Wrist: Right" else "Wrist: Left", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        onLiftToWakeChanged = { enabled ->
-                            coroutineScope.launch {
-                                bleManager.protocolHandler.setLiftToWake(enabled)
-                            }
-                        },
-                        onActivityReminderChanged = { enabled ->
-                            coroutineScope.launch {
-                                bleManager.protocolHandler.setActivityReminders(enabled)
-                            }
-                        },
-                        onOpenWatchfacesClick = {
-                            coroutineScope.launch {
-                                val faces = bleManager.protocolHandler.getWatchfaceInventory()
-                                if (faces.isNotEmpty()) {
-                                    installedWatchfaces = faces
-                                }
-                                isWatchfaceGalleryOpen = true
-                            }
-                        },
-                        onOpenStressTestClick = { isStressTestOpen = true }
-                    )
+                        )
+                        NavigationTab.SLEEP -> SleepDetailScreen(
+                            session = latestSleepSession
+                        )
+                        NavigationTab.LIVE -> LiveMetricsScreen(
+                            latestSample = null
+                        )
+                        NavigationTab.TRENDS -> TrendsScreen(
+                            summaries = recentSummaries
+                        )
+                    }
                 }
             }
         }

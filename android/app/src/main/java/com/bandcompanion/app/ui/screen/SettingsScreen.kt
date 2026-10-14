@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Download
@@ -34,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -60,6 +62,8 @@ import com.bandcompanion.app.ui.theme.NeonTeal
 import com.bandcompanion.app.ui.theme.ObsidianBlack
 import com.bandcompanion.app.ui.theme.ObsidianCard
 import com.bandcompanion.app.ui.theme.ObsidianHighlight
+import com.bandcompanion.app.ui.theme.StatusConnectingAmber
+import com.bandcompanion.app.ui.theme.StatusDisconnectedRed
 import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
@@ -78,6 +82,9 @@ import com.bandcompanion.core.model.DeviceInfo
 @Composable
 fun SettingsScreen(
     deviceInfo: DeviceInfo?,
+    isLiveConnected: Boolean = false,
+    isLiveConnecting: Boolean = false,
+    onBackClick: (() -> Unit)? = null,
     onExportCsvClick: () -> Unit,
     onExportJsonClick: () -> Unit,
     onFindBandClick: () -> Unit = {},
@@ -93,6 +100,14 @@ fun SettingsScreen(
     var isLiftToWakeEnabled by remember { mutableStateOf(true) }
     var isStandReminderEnabled by remember { mutableStateOf(true) }
 
+    val isBonded = deviceInfo?.isBonded == true
+    val (badgeText, badgeColor) = when {
+        !isBonded -> Pair("NOT PAIRED", StatusDisconnectedRed)
+        isLiveConnected -> Pair("CONNECTED", NeonTeal)
+        isLiveConnecting -> Pair("CONNECTING...", StatusConnectingAmber)
+        else -> Pair("DISCONNECTED", TextMuted)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -101,13 +116,34 @@ fun SettingsScreen(
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "HARDWARE & SYSTEM PREFERENCES",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextMuted,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (onBackClick != null) {
+                IconButton(
+                    onClick = onBackClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(ObsidianCard)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Text(
+                text = "HARDWARE & SYSTEM PREFERENCES",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         // Paired Hardware Card
         Card(
@@ -139,15 +175,15 @@ fun SettingsScreen(
                             Text(text = "PAIRED BAND", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
                         }
 
-                        // Status badge
+                        // Live Dynamic Status badge
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(NeonTeal.copy(alpha = 0.15f))
-                                .border(0.5.dp, NeonTeal.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                .background(badgeColor.copy(alpha = 0.15f))
+                                .border(0.5.dp, badgeColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
-                            Text(text = "CONNECTED", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NeonTeal)
+                            Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = badgeColor)
                         }
                     }
 

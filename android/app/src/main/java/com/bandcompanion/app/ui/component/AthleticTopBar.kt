@@ -74,7 +74,9 @@ import java.util.Locale
 @Composable
 fun AthleticTopBar(
     deviceInfo: DeviceInfo?,
-    isSyncing: Boolean,
+    isLiveConnected: Boolean = false,
+    isLiveConnecting: Boolean = false,
+    isSyncing: Boolean = false,
     onSyncClick: () -> Unit,
     onPairClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -82,7 +84,6 @@ fun AthleticTopBar(
 ) {
     val dateString = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()).uppercase()
     val isBonded = deviceInfo?.isBonded == true
-    val isConnected = deviceInfo?.isConnected == true
 
     // Infinite transition for continuous subtle animations
     val infiniteTransition = rememberInfiniteTransition(label = "topBarRadar")
@@ -111,15 +112,17 @@ fun AthleticTopBar(
 
     val beaconColor = when {
         !isBonded -> StatusDisconnectedRed
-        isConnected -> StatusConnectedGreen
-        else -> StatusConnectingAmber
+        isLiveConnected -> StatusConnectedGreen
+        isLiveConnecting -> StatusConnectingAmber
+        else -> TextMuted
     }
 
     val statusText = when {
         !isBonded -> "PAIR BAND"
         isSyncing -> "SYNCING..."
-        isConnected -> "CONNECTED"
-        else -> "SEARCHING"
+        isLiveConnected -> "CONNECTED"
+        isLiveConnecting -> "CONNECTING..."
+        else -> "NOT CONNECTED"
     }
 
     Box(
@@ -141,19 +144,19 @@ fun AthleticTopBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Athletic Brand Title & Today's Date
+            // Left: Brand Title & Today's Date
             Column {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "ATHLETIC HUB",
+                        text = "BAND COMPANION",
                         style = androidx.compose.ui.text.TextStyle(
                             color = TextPrimary,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
-                            letterSpacing = 1.2.sp
+                            letterSpacing = 1.0.sp
                         )
                     )
 
@@ -186,7 +189,7 @@ fun AthleticTopBar(
                 )
             }
 
-            // Right: Device Capsule & Action Buttons
+            // Right: Device Capsule & Action Buttons (Sync + Settings)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -195,7 +198,7 @@ fun AthleticTopBar(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF161922))
+                        .background(Color(0xFF282C38))
                         .border(
                             width = 0.75.dp,
                             brush = Brush.horizontalGradient(
@@ -215,8 +218,8 @@ fun AthleticTopBar(
                             val center = Offset(size.width / 2f, size.height / 2f)
                             val baseRadius = 4.dp.toPx()
 
-                            // Expanding pulse wave when active
-                            if (isConnected || !isBonded) {
+                            // Expanding pulse wave when active or connecting
+                            if (isLiveConnected || isLiveConnecting) {
                                 val waveRadius = baseRadius + (pulseProgress * 4.dp.toPx())
                                 val waveAlpha = (1f - pulseProgress).coerceIn(0f, 1f) * 0.6f
                                 drawCircle(
@@ -237,7 +240,7 @@ fun AthleticTopBar(
 
                         Text(
                             text = statusText,
-                            color = if (isConnected) TextPrimary else beaconColor,
+                            color = if (isLiveConnected) TextPrimary else beaconColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.4.sp
@@ -245,7 +248,7 @@ fun AthleticTopBar(
 
                         // Battery indicator if connected
                         val battery = deviceInfo?.batteryLevel
-                        if (isBonded && battery != null) {
+                        if (isBonded && battery != null && isLiveConnected) {
                             Text(
                                 text = "•",
                                 color = TextMuted,
@@ -272,7 +275,7 @@ fun AthleticTopBar(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF161922))
+                        .background(Color(0xFF282C38))
                         .border(
                             0.75.dp,
                             if (isSyncing) ElectricCyan.copy(alpha = 0.8f) else GlassDockBorderMuted,
@@ -288,6 +291,24 @@ fun AthleticTopBar(
                         modifier = Modifier
                             .size(18.dp)
                             .rotate(if (isSyncing) syncRotation else 0f)
+                    )
+                }
+
+                // Top-Right Settings Action Button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF282C38))
+                        .border(0.75.dp, GlassDockBorderMuted, CircleShape)
+                        .clickable { onSettingsClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
