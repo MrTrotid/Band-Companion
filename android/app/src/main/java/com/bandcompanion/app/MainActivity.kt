@@ -49,6 +49,8 @@ import com.bandcompanion.app.export.ExportManager
 import com.bandcompanion.app.service.BandForegroundService
 import com.bandcompanion.app.ui.component.AthleticNavigationBar
 import com.bandcompanion.app.ui.component.AthleticTopBar
+import com.bandcompanion.app.ui.component.LiveStressTestDialog
+import com.bandcompanion.app.ui.component.WatchfaceGalleryDialog
 import com.bandcompanion.app.ui.screen.DashboardScreen
 import com.bandcompanion.app.ui.screen.LiveMetricsScreen
 import com.bandcompanion.app.ui.screen.PairingScreen
@@ -64,6 +66,8 @@ import com.bandcompanion.core.bluetooth.BleConnectionManager
 import com.bandcompanion.core.bluetooth.BleScanner
 import com.bandcompanion.core.bluetooth.DiscoveredBand
 import com.bandcompanion.core.bluetooth.crypto.HiChain3Crypto
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler.WatchfaceItem
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler.WeatherCondition
 import com.bandcompanion.core.database.AppDatabase
 import com.bandcompanion.core.database.repository.DeviceRepository
 import com.bandcompanion.core.database.repository.MoodRepository
@@ -217,6 +221,12 @@ fun MainAppContent(
     var pendingAuthKeyHex by remember { mutableStateOf<String?>(null) }
     var pendingSecretKeyHex by remember { mutableStateOf<String?>(null) }
 
+    var isWatchfaceGalleryOpen by remember { mutableStateOf(false) }
+    var isStressTestOpen by remember { mutableStateOf(false) }
+    var isSyncingWeather by remember { mutableStateOf(false) }
+    var weatherCondition by remember { mutableStateOf(WeatherCondition(21, 2, "Partly Cloudy", "San Francisco", 3, 34)) }
+    var installedWatchfaces by remember { mutableStateOf<List<WatchfaceItem>>(emptyList()) }
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -363,6 +373,43 @@ fun MainAppContent(
         return
     }
 
+    if (isWatchfaceGalleryOpen) {
+        WatchfaceGalleryDialog(
+            installedFaces = installedWatchfaces,
+            onDismiss = { isWatchfaceGalleryOpen = false },
+            onApplyWatchface = { faceId ->
+                coroutineScope.launch {
+                    val ok = bleManager.protocolHandler.activateWatchface(faceId)
+                    if (ok) {
+                        Toast.makeText(context, "Watchface applied to Band 10!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Applied locally", Toast.LENGTH_SHORT).show()
+                    }
+                    isWatchfaceGalleryOpen = false
+                }
+            }
+        )
+    }
+
+    if (isStressTestOpen) {
+        LiveStressTestDialog(
+            initialHeartRate = currentPulse ?: 72,
+            onStartTest = {
+                coroutineScope.launch { bleManager.protocolHandler.startLiveStressTest() }
+            },
+            onStopTest = {
+                coroutineScope.launch { bleManager.protocolHandler.stopLiveStressTest() }
+            },
+            onSaveResult = { score ->
+                coroutineScope.launch {
+                    moodRepo.logMood(devId, "Stress Test", score, "Autonomic calibration score: $score")
+                    Toast.makeText(context, "Stress score ($score) recorded!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { isStressTestOpen = false }
+        )
+    }
+
     Scaffold(
         containerColor = ObsidianBlack,
         topBar = {
@@ -441,6 +488,31 @@ fun MainAppContent(
                         hrSamples = todaySamples,
                         currentPulseBpm = currentPulse,
                         isSyncing = isSyncing,
+                        weather = weatherCondition,
+                        isSyncingWeather = isSyncingWeather,
+                        onSyncWeatherClick = {
+                            isSyncingWeather = true
+                            coroutineScope.launch {
+                                val ok = bleManager.protocolHandler.sendWeatherUpdate(weatherCondition)
+                                delay(1500)
+                                isSyncingWeather = false
+                                if (ok) {
+                                    Toast.makeText(context, "Weather pushed to Band 10!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Weather synced locally", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        onOpenWatchfacesClick = {
+                            coroutineScope.launch {
+                                val faces = bleManager.protocolHandler.getWatchfaceInventory()
+                                if (faces.isNotEmpty()) {
+                                    installedWatchfaces = faces
+                                }
+                                isWatchfaceGalleryOpen = true
+                            }
+                        },
+                        onOpenStressTestClick = { isStressTestOpen = true },
                         onSyncClick = {
                             isSyncing = true
                             onSyncRequested()
@@ -490,7 +562,39 @@ fun MainAppContent(
                                 val file = exportManager.exportFullJson(devId)
                                 Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
                             }
-                        }
+                        },
+                        onFindBandClick = {
+                            coroutineScope.launch {
+                                val ok = bleManager.protocolHandler.findMyBand()
+                                Toast.makeText(context, if (ok) "Band 10 is vibrating!" else "Find command sent", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onWristChanged = { isRight ->
+                            coroutineScope.launch {
+                                bleManager.protocolHandler.setWearingWrist(isRight)
+                                Toast.makeText(context, if (isRight) "Wrist: Right" else "Wrist: Left", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onLiftToWakeChanged = { enabled ->
+                            coroutineScope.launch {
+                                bleManager.protocolHandler.setLiftToWake(enabled)
+                            }
+                        },
+                        onActivityReminderChanged = { enabled ->
+                            coroutineScope.launch {
+                                bleManager.protocolHandler.setActivityReminders(enabled)
+                            }
+                        },
+                        onOpenWatchfacesClick = {
+                            coroutineScope.launch {
+                                val faces = bleManager.protocolHandler.getWatchfaceInventory()
+                                if (faces.isNotEmpty()) {
+                                    installedWatchfaces = faces
+                                }
+                                isWatchfaceGalleryOpen = true
+                            }
+                        },
+                        onOpenStressTestClick = { isStressTestOpen = true }
                     )
                 }
             }

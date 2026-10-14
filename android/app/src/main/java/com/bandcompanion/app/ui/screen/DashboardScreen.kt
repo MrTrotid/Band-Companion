@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,8 +25,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLink
+import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,7 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,8 +61,15 @@ import com.bandcompanion.app.ui.component.LogWeightDialog
 import com.bandcompanion.app.ui.component.MoodCheckInDialog
 import com.bandcompanion.app.ui.component.OxygenationCard
 import com.bandcompanion.app.ui.component.SleepPerformanceCard
+import com.bandcompanion.app.ui.component.WeatherCard
 import com.bandcompanion.app.ui.component.WeightBmiCard
+import com.bandcompanion.app.ui.theme.CrimsonStrain
+import com.bandcompanion.app.ui.theme.ElectricCyan
+import com.bandcompanion.app.ui.theme.GlassDockBorder
+import com.bandcompanion.app.ui.theme.HotMagentaRing
+import com.bandcompanion.app.ui.theme.LavenderRecovery
 import com.bandcompanion.app.ui.theme.NeonCyanRing
+import com.bandcompanion.app.ui.theme.NeonTeal
 import com.bandcompanion.app.ui.theme.ObsidianBlack
 import com.bandcompanion.app.ui.theme.ObsidianCard
 import com.bandcompanion.app.ui.theme.ObsidianHighlight
@@ -62,6 +77,7 @@ import com.bandcompanion.app.ui.theme.RelaxedGreen
 import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler.WeatherCondition
 import com.bandcompanion.core.model.DailySummary
 import com.bandcompanion.core.model.DeviceInfo
 import com.bandcompanion.core.model.MoodEntry
@@ -84,6 +100,11 @@ fun DashboardScreen(
     hrSamples: List<SampleMetric> = emptyList(),
     currentPulseBpm: Int? = null,
     isSyncing: Boolean = false,
+    weather: WeatherCondition = WeatherCondition(21, 2, "Partly Cloudy", "San Francisco", 3, 34),
+    isSyncingWeather: Boolean = false,
+    onSyncWeatherClick: () -> Unit = {},
+    onOpenWatchfacesClick: () -> Unit = {},
+    onOpenStressTestClick: () -> Unit = {},
     onSyncClick: () -> Unit,
     onPairClick: () -> Unit,
     onLogMood: (moodType: String, energyLevel: Int, note: String?) -> Unit = { _, _, _ -> },
@@ -94,6 +115,35 @@ fun DashboardScreen(
 
     var showMoodDialog by remember { mutableStateOf(false) }
     var showWeightDialog by remember { mutableStateOf(false) }
+
+    // Whoop-style Banister TRIMP logarithmic daily strain (0 - 21.0 scale)
+    val dailyStrain = remember(hrSamples) {
+        val validHrs = hrSamples.mapNotNull { it.heartRate }.filter { it in 40..220 }
+        if (validHrs.isEmpty()) {
+            8.4f
+        } else {
+            val rest = 55f
+            val max = 190f
+            var trimpSum = 0.0
+            for (hr in validHrs) {
+                val deltaHr = ((hr - rest) / (max - rest)).coerceIn(0f, 1f)
+                trimpSum += (deltaHr * 0.64 * kotlin.math.exp(1.92 * deltaHr))
+            }
+            val raw = (7.0 * kotlin.math.ln(1.0 + (trimpSum / 30.0))).toFloat()
+            raw.coerceIn(0f, 21.0f)
+        }
+    }
+
+    // Oura-style Recovery / Readiness score (0 - 100%)
+    val recoveryScore = remember(latestSleepSession, todaySummary) {
+        val sleepScore = latestSleepSession?.sleepScore ?: 74
+        val sleepContribution = sleepScore * 0.40f
+        val hrv = todaySummary?.avgHrv ?: 65f
+        val hrvContribution = (hrv / 90f).coerceIn(0.4f, 1.2f) * 35f
+        val rhr = todaySummary?.restingHeartRate ?: 58
+        val rhrContribution = ((75 - rhr).coerceIn(0, 30) / 30f) * 25f
+        (sleepContribution + hrvContribution + rhrContribution).toInt().coerceIn(35, 99)
+    }
 
     if (showMoodDialog) {
         MoodCheckInDialog(
@@ -126,14 +176,13 @@ fun DashboardScreen(
         // Setup / Pair Banner if not bonded
         if (!isBonded) {
             UnbondedSetupCard(onPairClick = onPairClick)
-        } else {
-            // Connected Device Status Header
-            AthleticDeviceHeaderCard(
-                deviceInfo = deviceInfo,
-                isSyncing = isSyncing,
-                onSyncClick = onSyncClick
-            )
         }
+
+        // Whoop / Oura Recovery & Strain Macro Row
+        AthleticRecoveryStrainRow(
+            recoveryScore = recoveryScore,
+            dailyStrain = dailyStrain
+        )
 
         // 1. Concentric 4-Ring Activity Canvas Engine
         ConcentricActivityRings(
@@ -145,6 +194,101 @@ fun DashboardScreen(
             calorieTarget = 500,
             standHours = todaySummary?.standHours ?: if ((todaySummary?.totalSteps ?: 0) > 2000) 8 else 3,
             standHoursTarget = 12
+        )
+
+        // Quick Studio Launchers Row (Watchface Studio & 60s Stress Test)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(84.dp)
+                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(18.dp), spotColor = ElectricCyan.copy(alpha = 0.2f))
+                    .clickable { onOpenWatchfacesClick() },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(
+                            0.75.dp,
+                            Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)),
+                            RoundedCornerShape(18.dp)
+                        )
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(ElectricCyan.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Default.Palette, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(20.dp))
+                        }
+                        Column {
+                            Text(text = "Watchfaces", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(text = "AMOLED Studio", fontSize = 10.sp, color = TextMuted)
+                        }
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(84.dp)
+                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(18.dp), spotColor = NeonTeal.copy(alpha = 0.2f))
+                    .clickable { onOpenStressTestClick() },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(
+                            0.75.dp,
+                            Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)),
+                            RoundedCornerShape(18.dp)
+                        )
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(NeonTeal.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Default.Psychology, contentDescription = null, tint = NeonTeal, modifier = Modifier.size(20.dp))
+                        }
+                        Column {
+                            Text(text = "Stress Test", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(text = "60s Calibration", fontSize = 10.sp, color = TextMuted)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Live Weather Push & Forecast Card
+        WeatherCard(
+            weather = weather,
+            isSyncingWeather = isSyncingWeather,
+            onSyncWeatherClick = onSyncWeatherClick
         )
 
         // 2. Cardiovascular Strain & 24/7 Continuous PPG Curve
@@ -184,6 +328,121 @@ fun DashboardScreen(
         )
 
         Spacer(modifier = Modifier.height(28.dp))
+    }
+}
+
+@Composable
+fun AthleticRecoveryStrainRow(
+    recoveryScore: Int,
+    dailyStrain: Float
+) {
+    val (recoveryLabel, recoveryColor) = when {
+        recoveryScore >= 80 -> Pair("Optimal Recovery", NeonTeal)
+        recoveryScore >= 60 -> Pair("Good Readiness", ElectricCyan)
+        recoveryScore >= 40 -> Pair("Fair Rest", LavenderRecovery)
+        else -> Pair("Low Recovery", CrimsonStrain)
+    }
+
+    val (strainLabel, strainColor) = when {
+        dailyStrain < 10f -> Pair("Light Load", ElectricCyan)
+        dailyStrain < 14f -> Pair("Moderate Load", NeonTeal)
+        dailyStrain < 18f -> Pair("Strenuous Load", HotMagentaRing)
+        else -> Pair("All-Out Effort", CrimsonStrain)
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Recovery Card
+        Card(
+            modifier = Modifier
+                .weight(1f)
+                .height(115.dp)
+                .shadow(elevation = 10.dp, shape = RoundedCornerShape(22.dp), spotColor = recoveryColor.copy(alpha = 0.25f)),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        0.75.dp,
+                        Brush.verticalGradient(listOf(recoveryColor.copy(alpha = 0.5f), Color.Transparent)),
+                        RoundedCornerShape(22.dp)
+                    )
+                    .padding(14.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "RECOVERY", fontSize = 10.sp, fontWeight = FontWeight.Black, color = TextMuted, letterSpacing = 0.5.sp)
+                        Icon(imageVector = Icons.Default.AutoGraph, contentDescription = null, tint = recoveryColor, modifier = Modifier.size(15.dp))
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(text = "$recoveryScore", fontSize = 32.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                        Text(text = "%", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = recoveryColor, modifier = Modifier.padding(bottom = 4.dp))
+                    }
+
+                    Text(text = recoveryLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = recoveryColor)
+                }
+            }
+        }
+
+        // Daily Strain Card
+        Card(
+            modifier = Modifier
+                .weight(1f)
+                .height(115.dp)
+                .shadow(elevation = 10.dp, shape = RoundedCornerShape(22.dp), spotColor = strainColor.copy(alpha = 0.25f)),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        0.75.dp,
+                        Brush.verticalGradient(listOf(strainColor.copy(alpha = 0.5f), Color.Transparent)),
+                        RoundedCornerShape(22.dp)
+                    )
+                    .padding(14.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "DAY STRAIN", fontSize = 10.sp, fontWeight = FontWeight.Black, color = TextMuted, letterSpacing = 0.5.sp)
+                        Icon(imageVector = Icons.Default.Speed, contentDescription = null, tint = strainColor, modifier = Modifier.size(15.dp))
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(text = "%.1f".format(dailyStrain), fontSize = 32.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                        Text(text = "/ 21", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.padding(bottom = 4.dp))
+                    }
+
+                    Text(text = strainLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = strainColor)
+                }
+            }
+        }
     }
 }
 
