@@ -12,21 +12,28 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +47,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.bandcompanion.app.export.ExportManager
 import com.bandcompanion.app.service.BandForegroundService
+import com.bandcompanion.app.ui.component.AthleticNavigationBar
+import com.bandcompanion.app.ui.component.AthleticTopBar
 import com.bandcompanion.app.ui.screen.DashboardScreen
 import com.bandcompanion.app.ui.screen.LiveMetricsScreen
 import com.bandcompanion.app.ui.screen.PairingScreen
@@ -47,6 +56,7 @@ import com.bandcompanion.app.ui.screen.SettingsScreen
 import com.bandcompanion.app.ui.screen.SleepDetailScreen
 import com.bandcompanion.app.ui.screen.TrendsScreen
 import com.bandcompanion.app.ui.theme.BandCompanionTheme
+import com.bandcompanion.app.ui.theme.ObsidianBlack
 import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.SurfaceDark
 import com.bandcompanion.app.ui.theme.TextMuted
@@ -177,7 +187,7 @@ enum class NavigationTab(val label: String, val icon: androidx.compose.ui.graphi
     DASHBOARD("Health", Icons.Default.Dashboard),
     SLEEP("Sleep", Icons.Default.Bedtime),
     LIVE("Exercise", Icons.Default.Favorite),
-    TRENDS("Discover", Icons.Default.ShowChart),
+    TRENDS("Discover", Icons.AutoMirrored.Filled.ShowChart),
     SETTINGS("Me", Icons.Default.Settings)
 }
 
@@ -354,24 +364,33 @@ fun MainAppContent(
     }
 
     Scaffold(
-        bottomBar = {
-            NavigationBar(containerColor = SurfaceDark) {
-                NavigationTab.values().forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.label) },
-                        label = { Text(text = tab.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ElectricCyan,
-                            selectedTextColor = ElectricCyan,
-                            unselectedIconColor = TextMuted,
-                            unselectedTextColor = TextMuted,
-                            indicatorColor = SurfaceDark
-                        )
-                    )
+        containerColor = ObsidianBlack,
+        topBar = {
+            AthleticTopBar(
+                deviceInfo = primaryDevice,
+                isSyncing = isSyncing,
+                onSyncClick = {
+                    isSyncing = true
+                    onSyncRequested()
+                    coroutineScope.launch {
+                        delay(3000)
+                        isSyncing = false
+                    }
+                },
+                onPairClick = {
+                    isPairingOpen = true
+                    bleScanner.startScan()
+                },
+                onSettingsClick = {
+                    selectedTab = NavigationTab.SETTINGS
                 }
-            }
+            )
+        },
+        bottomBar = {
+            AthleticNavigationBar(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
         }
     ) { innerPadding ->
         Box(
@@ -379,67 +398,101 @@ fun MainAppContent(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
-                NavigationTab.DASHBOARD -> DashboardScreen(
-                    deviceInfo = primaryDevice,
-                    todaySummary = todaySummary,
-                    latestSleepSession = latestSleepSession,
-                    latestMood = latestMood,
-                    latestWeight = latestWeight,
-                    hrSamples = todaySamples,
-                    currentPulseBpm = currentPulse,
-                    isSyncing = isSyncing,
-                    onSyncClick = {
-                        isSyncing = true
-                        onSyncRequested()
-                        coroutineScope.launch {
-                            delay(3000)
-                            isSyncing = false
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val isForward = targetState.ordinal > initialState.ordinal
+                    val slideDirection = if (isForward) 1 else -1
+                    (slideInHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        ),
+                        initialOffsetX = { width -> slideDirection * (width / 4) }
+                    ) + fadeIn(
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                    ) + scaleIn(
+                        initialScale = 0.98f,
+                        animationSpec = tween(durationMillis = 260)
+                    )).togetherWith(
+                        slideOutHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            targetOffsetX = { width -> -slideDirection * (width / 4) }
+                        ) + fadeOut(
+                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                        ) + scaleOut(
+                            targetScale = 0.98f,
+                            animationSpec = tween(durationMillis = 200)
+                        )
+                    )
+                },
+                label = "tabScreenTransition"
+            ) { targetTab ->
+                when (targetTab) {
+                    NavigationTab.DASHBOARD -> DashboardScreen(
+                        deviceInfo = primaryDevice,
+                        todaySummary = todaySummary,
+                        latestSleepSession = latestSleepSession,
+                        latestMood = latestMood,
+                        latestWeight = latestWeight,
+                        hrSamples = todaySamples,
+                        currentPulseBpm = currentPulse,
+                        isSyncing = isSyncing,
+                        onSyncClick = {
+                            isSyncing = true
+                            onSyncRequested()
+                            coroutineScope.launch {
+                                delay(3000)
+                                isSyncing = false
+                            }
+                        },
+                        onPairClick = {
+                            isPairingOpen = true
+                            bleScanner.startScan()
+                        },
+                        onLogMood = { mood, energy, note ->
+                            coroutineScope.launch {
+                                moodRepo.logMood(devId, mood, energy, note)
+                                Toast.makeText(context, "Mood logged: $mood", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onLogWeight = { weight, height, note ->
+                            coroutineScope.launch {
+                                weightRepo.logWeight(weight, height, note)
+                                Toast.makeText(context, "Weight logged: %.1f kg".format(weight), Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    },
-                    onPairClick = {
-                        isPairingOpen = true
-                        bleScanner.startScan()
-                    },
-                    onLogMood = { mood, energy, note ->
-                        coroutineScope.launch {
-                            moodRepo.logMood(devId, mood, energy, note)
-                            Toast.makeText(context, "Mood logged: $mood", Toast.LENGTH_SHORT).show()
+                    )
+                    NavigationTab.SLEEP -> SleepDetailScreen(
+                        session = latestSleepSession
+                    )
+                    NavigationTab.LIVE -> LiveMetricsScreen(
+                        latestSample = null
+                    )
+                    NavigationTab.TRENDS -> TrendsScreen(
+                        summaries = recentSummaries
+                    )
+                    NavigationTab.SETTINGS -> SettingsScreen(
+                        deviceInfo = primaryDevice,
+                        onExportCsvClick = {
+                            coroutineScope.launch {
+                                val currentEpochSec = System.currentTimeMillis() / 1000
+                                val monthAgo = currentEpochSec - (30 * 86400)
+                                val file = exportManager.exportSamplesToCsv(devId, monthAgo, currentEpochSec)
+                                Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        onExportJsonClick = {
+                            coroutineScope.launch {
+                                val file = exportManager.exportFullJson(devId)
+                                Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
+                            }
                         }
-                    },
-                    onLogWeight = { weight, height, note ->
-                        coroutineScope.launch {
-                            weightRepo.logWeight(weight, height, note)
-                            Toast.makeText(context, "Weight logged: %.1f kg".format(weight), Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                NavigationTab.SLEEP -> SleepDetailScreen(
-                    session = latestSleepSession
-                )
-                NavigationTab.LIVE -> LiveMetricsScreen(
-                    latestSample = null
-                )
-                NavigationTab.TRENDS -> TrendsScreen(
-                    summaries = recentSummaries
-                )
-                NavigationTab.SETTINGS -> SettingsScreen(
-                    deviceInfo = primaryDevice,
-                    onExportCsvClick = {
-                        coroutineScope.launch {
-                            val now = System.currentTimeMillis() / 1000
-                            val monthAgo = now - (30 * 86400)
-                            val file = exportManager.exportSamplesToCsv(devId, monthAgo, now)
-                            Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onExportJsonClick = {
-                        coroutineScope.launch {
-                            val file = exportManager.exportFullJson(devId)
-                            Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                )
+                    )
+                }
             }
         }
     }
