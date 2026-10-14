@@ -11,9 +11,13 @@
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:targetApi="s" />
 
-    <!-- Location for BLE beacon discovery on Android 11 and lower -->
+    <!-- Location for Real-Time Weather & BLE Beacon Discovery -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Network & Internet Permissions for Live Weather -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Background Keepalive Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

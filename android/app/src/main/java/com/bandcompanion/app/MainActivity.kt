@@ -59,6 +59,7 @@ import com.bandcompanion.app.ui.screen.PairingScreen
 import com.bandcompanion.app.ui.screen.SettingsScreen
 import com.bandcompanion.app.ui.screen.SleepDetailScreen
 import com.bandcompanion.app.ui.screen.TrendsScreen
+import com.bandcompanion.app.weather.RealWeatherProvider
 import com.bandcompanion.app.ui.theme.BandCompanionTheme
 import com.bandcompanion.app.ui.theme.ObsidianBlack
 import com.bandcompanion.app.ui.theme.ElectricCyan
@@ -227,12 +228,17 @@ fun MainAppContent(
     var isWatchfaceGalleryOpen by remember { mutableStateOf(false) }
     var isStressTestOpen by remember { mutableStateOf(false) }
     var isSyncingWeather by remember { mutableStateOf(false) }
-    var weatherCondition by remember { mutableStateOf(WeatherCondition(21, 2, "Partly Cloudy", "San Francisco", 3, 34)) }
+    var weatherCondition by remember { mutableStateOf(WeatherCondition(19, 1, "Clear Sky", "Kathmandu", 1, 42)) }
     var installedWatchfaces by remember { mutableStateOf<List<WatchfaceItem>>(emptyList()) }
     var isSettingsOpen by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        val realWeather = RealWeatherProvider.fetchCurrentWeather(context)
+        weatherCondition = realWeather
+    }
 
     val connectionState by bleManager.connectionState.collectAsState()
     val authState by bleManager.protocolHandler.authState.collectAsState()
@@ -592,13 +598,15 @@ fun MainAppContent(
                             onSyncWeatherClick = {
                                 isSyncingWeather = true
                                 coroutineScope.launch {
-                                    val ok = bleManager.protocolHandler.sendWeatherUpdate(weatherCondition)
+                                    val realWeather = RealWeatherProvider.fetchCurrentWeather(context)
+                                    weatherCondition = realWeather
+                                    val ok = bleManager.protocolHandler.sendWeatherUpdate(realWeather)
                                     delay(1500)
                                     isSyncingWeather = false
                                     if (ok) {
-                                        Toast.makeText(context, "Weather pushed to Band 10!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Weather for ${realWeather.location} pushed to Band 10!", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(context, "Weather synced locally", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Weather updated: ${realWeather.location}", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             },

@@ -1256,7 +1256,7 @@ class BandProtocolHandler(
         }
 
         val samples = mutableListOf<SampleMetric>()
-        val maxBlocks = stepRecordCount.coerceAtMost(40)
+        val maxBlocks = stepRecordCount.coerceAtMost(120)
         for (idx in 0 until maxBlocks) {
             val idxPayload = VarIntTlv.encode(
                 0x81,
@@ -1283,6 +1283,7 @@ class BandProtocolHandler(
 
                 val sampleTs = baseTs + (60L * offset)
                 val steps = features["steps"] ?: 0
+                val calories = features["calories"] ?: 0
                 val hr = features["heart_rate"]
                 val validHr = if (hr != null && hr in 35..230) hr else null
                 val spo2 = features["spo2"]
@@ -1294,7 +1295,8 @@ class BandProtocolHandler(
                             timestamp = sampleTs,
                             steps = steps,
                             heartRate = validHr,
-                            spo2 = validSpo2
+                            spo2 = validSpo2,
+                            calories = calories
                         )
                     )
                 }
@@ -1334,10 +1336,12 @@ class BandProtocolHandler(
             var totalLight = 0
             var totalRem = 0
             var totalAwake = 0
+            var totalNap = 0
             var earliestStart = Long.MAX_VALUE
             var latestEnd = 0L
+            val stageIntervals = mutableListOf<SleepStageInterval>()
 
-            for (idx in 0 until sleepCount.coerceAtMost(20)) {
+            for (idx in 0 until sleepCount.coerceAtMost(30)) {
                 val idxPayload = VarIntTlv.encode(
                     0x81,
                     VarIntTlv.encode(0x02, byteArrayOf(((idx ushr 8) and 0xFF).toByte(), (idx and 0xFF).toByte()))
@@ -1348,7 +1352,7 @@ class BandProtocolHandler(
                 for ((tag, value) in items) {
                     if (tag != 0x83) continue
                     val sub = VarIntTlv.decodeAll(value)
-                    val stage = sub[0x04]?.firstOrNull()?.toInt()?.and(0xFF) ?: 0
+                    val rawStage = sub[0x04]?.firstOrNull()?.toInt()?.and(0xFF) ?: 0
                     val stamp = sub[0x05] ?: continue
                     if (stamp.size < 6) continue
 
@@ -1361,16 +1365,26 @@ class BandProtocolHandler(
                     earliestStart = minOf(earliestStart, start)
                     latestEnd = maxOf(latestEnd, start + (durationMin * 60L))
 
-                    when (stage) {
-                        1 -> totalDeep += durationMin
-                        2 -> totalLight += durationMin
-                        3 -> totalRem += durationMin
-                        4 -> totalAwake += durationMin
+                    val stageType = SleepStageType.fromRawCode(rawStage)
+                    stageIntervals.add(
+                        SleepStageInterval(
+                            stage = stageType,
+                            startTimestamp = start,
+                            endTimestamp = start + (durationMin * 60L)
+                        )
+                    )
+
+                    when (stageType) {
+                        SleepStageType.DEEP -> totalDeep += durationMin
+                        SleepStageType.LIGHT -> totalLight += durationMin
+                        SleepStageType.REM -> totalRem += durationMin
+                        SleepStageType.AWAKE -> totalAwake += durationMin
+                        SleepStageType.NAP -> totalNap += durationMin
                     }
                 }
             }
 
-            val totalDuration = totalDeep + totalLight + totalRem
+            val totalDuration = totalDeep + totalLight + totalRem + totalNap
             if (totalDuration > 0 && earliestStart < Long.MAX_VALUE) {
                 val session = SleepSession(
                     sessionId = earliestStart.toString(),
@@ -1381,7 +1395,8 @@ class BandProtocolHandler(
                     lightSleepMinutes = totalLight,
                     remSleepMinutes = totalRem,
                     awakeMinutes = totalAwake,
-                    sleepScore = (totalDuration * 100 / 480).coerceIn(45, 98)
+                    sleepScore = (totalDuration * 100 / 480).coerceIn(45, 98),
+                    stages = stageIntervals
                 )
                 _sleepDataFlow.emit(session)
             }
