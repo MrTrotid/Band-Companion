@@ -2,6 +2,7 @@ package com.bandcompanion.app.ui.screen
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,15 +30,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bandcompanion.app.ui.theme.ElectricCyan
+import com.bandcompanion.app.ui.theme.GlassDockBorder
 import com.bandcompanion.app.ui.theme.NeonTeal
+import com.bandcompanion.app.ui.theme.ObsidianBlack
+import com.bandcompanion.app.ui.theme.ObsidianCard
 import com.bandcompanion.app.ui.theme.SleepAwakeColor
 import com.bandcompanion.app.ui.theme.SleepDeepColor
 import com.bandcompanion.app.ui.theme.SleepLightColor
@@ -60,7 +66,7 @@ fun SleepDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(ObsidianBlack)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -77,62 +83,79 @@ fun SleepDetailScreen(
         // Overnight Biomarkers: HRV, SpO2, Respiratory
         OvernightBiomarkersCard(session = session)
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
 @Composable
 fun SleepScoreHeaderCard(session: SleepSession?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = ElectricCyan.copy(alpha = 0.25f)
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .border(
+                    0.75.dp,
+                    Brush.verticalGradient(
+                        listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+                .padding(18.dp)
         ) {
-            Column {
-                Text(
-                    text = "LAST NIGHT'S SLEEP",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${session?.sleepScore ?: 69}",
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "Efficiency: ${(session?.sleepEfficiency ?: 86f).toInt()}% • Latency: ${session?.latencyMinutes ?: 13}m",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "LAST NIGHT'S SLEEP",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${session?.sleepScore ?: 69}",
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Efficiency: ${(session?.sleepEfficiency ?: 86f).toInt()}% • Latency: ${session?.latencyMinutes ?: 13}m",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
 
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "Total Sleep",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
-                Text(
-                    text = formatMinutes(session?.totalSleepMinutes ?: 277),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ElectricCyan
-                )
-                Text(
-                    text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 351)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Total Sleep",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                    Text(
+                        text = formatMinutes(session?.totalSleepMinutes ?: 277),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElectricCyan
+                    )
+                    Text(
+                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 351)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
             }
         }
     }
@@ -141,67 +164,84 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
 @Composable
 fun HypnogramCard(stages: List<SleepStageInterval>) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = NeonTeal.copy(alpha = 0.2f)
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "HYPNOGRAM TIMELINE",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                    fontWeight = FontWeight.Bold
+                .border(
+                    0.75.dp,
+                    Brush.verticalGradient(
+                        listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)
+                    ),
+                    RoundedCornerShape(22.dp)
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LegendItem("Awake", SleepAwakeColor)
-                    LegendItem("REM", SleepRemColor)
-                    LegendItem("Light", SleepLightColor)
-                    LegendItem("Deep", SleepDeepColor)
-                }
-            }
-
-            // Timeline Canvas
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(90.dp)
-                    .background(SurfaceVariantDark, RoundedCornerShape(8.dp))
-                    .padding(4.dp)
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    if (stages.isEmpty()) return@Canvas
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "HYPNOGRAM TIMELINE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LegendItem("Awake", SleepAwakeColor)
+                        LegendItem("REM", SleepRemColor)
+                        LegendItem("Light", SleepLightColor)
+                        LegendItem("Deep", SleepDeepColor)
+                    }
+                }
 
-                    val totalDuration = stages.sumOf { it.durationSeconds }.toFloat().coerceAtLeast(1f)
-                    val widthScale = size.width / totalDuration
-                    var currentX = 0f
+                // Timeline Canvas
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(90.dp)
+                        .background(SurfaceVariantDark, RoundedCornerShape(8.dp))
+                        .padding(4.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        if (stages.isEmpty()) return@Canvas
 
-                    for (interval in stages) {
-                        val segWidth = interval.durationSeconds * widthScale
-                        val (segColor, heightFrac, topFrac) = when (interval.stage) {
-                            SleepStageType.AWAKE -> Triple(SleepAwakeColor, 0.25f, 0.0f)
-                            SleepStageType.REM -> Triple(SleepRemColor, 0.35f, 0.25f)
-                            SleepStageType.LIGHT -> Triple(SleepLightColor, 0.50f, 0.50f)
-                            SleepStageType.DEEP -> Triple(SleepDeepColor, 0.70f, 0.30f)
-                            SleepStageType.NAP -> Triple(SleepLightColor, 0.40f, 0.50f)
+                        val totalDuration = stages.sumOf { it.durationSeconds }.toFloat().coerceAtLeast(1f)
+                        val widthScale = size.width / totalDuration
+                        var currentX = 0f
+
+                        for (interval in stages) {
+                            val segWidth = interval.durationSeconds * widthScale
+                            val (segColor, heightFrac, topFrac) = when (interval.stage) {
+                                SleepStageType.AWAKE -> Triple(SleepAwakeColor, 0.25f, 0.0f)
+                                SleepStageType.REM -> Triple(SleepRemColor, 0.35f, 0.25f)
+                                SleepStageType.LIGHT -> Triple(SleepLightColor, 0.50f, 0.50f)
+                                SleepStageType.DEEP -> Triple(SleepDeepColor, 0.70f, 0.30f)
+                                SleepStageType.NAP -> Triple(SleepLightColor, 0.40f, 0.50f)
+                            }
+
+                            drawRoundRect(
+                                color = segColor,
+                                topLeft = Offset(currentX, size.height * topFrac),
+                                size = Size(segWidth.coerceAtLeast(1.5f), size.height * heightFrac),
+                                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                            )
+                            currentX += segWidth
                         }
-
-                        drawRoundRect(
-                            color = segColor,
-                            topLeft = Offset(currentX, size.height * topFrac),
-                            size = Size(segWidth.coerceAtLeast(1.5f), size.height * heightFrac),
-                            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                        )
-                        currentX += segWidth
                     }
                 }
             }
@@ -231,27 +271,44 @@ fun StageBreakdownCard(session: SleepSession?) {
     val awakeMin = session?.awakeMinutes ?: 38
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = SleepDeepColor.copy(alpha = 0.2f)
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .border(
+                    0.75.dp,
+                    Brush.verticalGradient(
+                        listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+                .padding(16.dp)
         ) {
-            Text(
-                text = "STAGE COMPOSITION",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                fontWeight = FontWeight.Bold
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "STAGE COMPOSITION",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    fontWeight = FontWeight.Bold
+                )
 
-            StageRow(name = "Deep Sleep (Physical Recovery)", minutes = deepMin, total = total, color = SleepDeepColor, target = "Target: 20-25%")
-            StageRow(name = "REM Sleep (Cognitive / Memory)", minutes = remMin, total = total, color = SleepRemColor, target = "Target: 20-25%")
-            StageRow(name = "Light Sleep", minutes = lightMin, total = total, color = SleepLightColor, target = "Target: 50-60%")
-            StageRow(name = "Awake / Restless", minutes = awakeMin, total = total, color = SleepAwakeColor, target = "Normal: < 10%")
+                StageRow(name = "Deep Sleep (Physical Recovery)", minutes = deepMin, total = total, color = SleepDeepColor, target = "Target: 20-25%")
+                StageRow(name = "REM Sleep (Cognitive / Memory)", minutes = remMin, total = total, color = SleepRemColor, target = "Target: 20-25%")
+                StageRow(name = "Light Sleep", minutes = lightMin, total = total, color = SleepLightColor, target = "Target: 50-60%")
+                StageRow(name = "Awake / Restless", minutes = awakeMin, total = total, color = SleepAwakeColor, target = "Normal: < 10%")
+            }
         }
     }
 }
@@ -287,46 +344,62 @@ fun StageRow(name: String, minutes: Int, total: Int, color: Color, target: Strin
 @Composable
 fun OvernightBiomarkersCard(session: SleepSession?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = ElectricCyan.copy(alpha = 0.2f)
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .border(
+                    0.75.dp,
+                    Brush.verticalGradient(
+                        listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+                .padding(16.dp)
         ) {
-            Text(
-                text = "OVERNIGHT BIOMARKERS",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                fontWeight = FontWeight.Bold
-            )
-
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                BiomarkerTile(
-                    title = "Overnight HRV",
-                    value = "${(session?.avgHrv ?: 84f).toInt()} ms",
-                    sub = "Baseline: ${(session?.minHrvBaseline ?: 51f).toInt()}-${(session?.maxHrvBaseline ?: 78f).toInt()} ms",
-                    icon = Icons.Default.Timeline,
-                    color = NeonTeal
+                Text(
+                    text = "OVERNIGHT BIOMARKERS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    fontWeight = FontWeight.Bold
                 )
-                BiomarkerTile(
-                    title = "Breathing Rate",
-                    value = "${(session?.avgBreathRate ?: 13f).toInt()} bpm",
-                    sub = "Baseline: 11-14 bpm",
-                    icon = Icons.Default.Air,
-                    color = ElectricCyan
-                )
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    BiomarkerTile(
+                        title = "Overnight HRV",
+                        value = "${(session?.avgHrv ?: 84f).toInt()} ms",
+                        sub = "Baseline: ${(session?.minHrvBaseline ?: 51f).toInt()}-${(session?.maxHrvBaseline ?: 78f).toInt()} ms",
+                        icon = Icons.Default.Timeline,
+                        color = NeonTeal
+                    )
+                    BiomarkerTile(
+                        title = "Breathing Rate",
+                        value = "${(session?.avgBreathRate ?: 13f).toInt()} bpm",
+                        sub = "Baseline: 11-14 bpm",
+                        icon = Icons.Default.Air,
+                        color = ElectricCyan
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 BiomarkerTile(
                     title = "Avg Sleep SpO2",
@@ -345,6 +418,7 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
             }
         }
     }
+}
 }
 
 @Composable
