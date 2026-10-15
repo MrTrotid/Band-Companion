@@ -49,7 +49,9 @@ object StrainEngine {
             return StrainResult(0.0f, 0.0f, HeartRateZones(), 0, 0)
         }
 
-        val hrRange = (maxHr - restingHr).coerceAtLeast(30).toFloat()
+        val validRest = restingHr.coerceIn(35, 110)
+        val validMax = maxHr.coerceIn(130, 220)
+        val hrRange = (validMax - validRest).coerceAtLeast(20).toFloat()
         var totalTrimp = 0.0f
         var peakHr = 0
         var hrSum = 0
@@ -63,14 +65,15 @@ object StrainEngine {
 
         for (sample in samples) {
             val hr = sample.heartRate ?: continue
-            if (sample.isOffWrist || hr < restingHr) continue
+            // Reject off-wrist, sentinel, or physiologically impossible values
+            if (sample.isOffWrist || hr <= 30 || hr >= 240 || hr < validRest) continue
 
             if (hr > peakHr) peakHr = hr
             hrSum += hr
             hrCount++
 
-            // Heart Rate Reserve fraction: 0.0 to 1.0
-            val deltaHr = ((hr - restingHr) / hrRange).coerceIn(0.0f, 1.0f)
+            // Heart Rate Reserve fraction: strictly clamped to 0.0 to 1.0
+            val deltaHr = ((hr - validRest) / hrRange).coerceIn(0.0f, 1.0f)
 
             // Banister TRIMP minute contribution
             // dt = 1 minute

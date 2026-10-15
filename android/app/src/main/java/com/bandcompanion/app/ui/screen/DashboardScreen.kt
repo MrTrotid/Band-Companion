@@ -344,9 +344,9 @@ fun DashboardScreen(
         // 6. Emotional Wellbeing & Autonomic Stress
         DashboardSectionHeader(title = "AUTONOMIC NERVOUS SYSTEM")
         EmotionalWellbeingCard(
-            stressScore = todaySummary?.stressScore ?: 38,
-            latestMood = latestMood,
-            onLogMoodClick = { showMoodDialog = true },
+            stressScore = todaySummary?.stressScore ?: 39,
+            latestMood = null,
+            onLogMoodClick = {},
             stressRecords = stressRecords
         )
 

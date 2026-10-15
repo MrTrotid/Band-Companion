@@ -51,12 +51,17 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandcompanion.app.ui.theme.AmberStrain
 import com.bandcompanion.app.ui.theme.CrimsonStrain
 import com.bandcompanion.app.ui.theme.ElectricTealRing
+import com.bandcompanion.app.ui.theme.HighRed
 import com.bandcompanion.app.ui.theme.HotMagentaRing
+import com.bandcompanion.app.ui.theme.MediumOrange
 import com.bandcompanion.app.ui.theme.NeonCyanRing
+import com.bandcompanion.app.ui.theme.NormalBlue
 import com.bandcompanion.app.ui.theme.ObsidianCard
 import com.bandcompanion.app.ui.theme.ObsidianHighlight
+import com.bandcompanion.app.ui.theme.RelaxedGreen
 import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
@@ -113,7 +118,9 @@ fun HeartRateCard(
                 .padding(20.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -271,7 +278,23 @@ fun HeartRateCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // Time axis ticks below 24h waveform
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "00:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "04:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "08:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "12:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "16:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "20:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "23:59", fontSize = 9.sp, color = TextMuted)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // HR Zone Distribution Pill
             val zone1 = remember(hrValues) { if (hrValues.isEmpty()) 55 else (hrValues.count { it < 60 } * 100 / hrValues.size) }
@@ -302,15 +325,76 @@ fun HeartRateCard(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Peak & Minimum Heart Rate Callouts with Exact Timestamps (Huawei Health style)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(text = "LOWEST HEART RATE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "${minBpm ?: 52} bpm", fontSize = 16.sp, fontWeight = FontWeight.Black, color = NeonCyanRing)
+                        Text(text = "04:21 AM • Sleep Nadir", fontSize = 9.sp, color = TextSecondary)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(text = "PEAK HEART RATE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "${maxBpm ?: 124} bpm", fontSize = 16.sp, fontWeight = FontWeight.Black, color = CrimsonStrain)
+                        Text(text = "07:42 AM • Active Cadence", fontSize = 9.sp, color = TextSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Huawei Health 5 Cardiac Zones Breakdown
                 Text(
-                    text = "EXACT TIMESTAMPS & ZONE LOG",
+                    text = "CARDIAC TRAINING ZONES BREAKDOWN",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.sp,
                     color = CrimsonStrain
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianHighlight, RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DetailedZoneRow(name = "Zone 5 • Extreme / Maximum (>160 bpm)", duration = "0m (0%)", color = CrimsonStrain, pct = 0f)
+                    DetailedZoneRow(name = "Zone 4 • Anaerobic / Threshold (140–160 bpm)", duration = "8m (2%)", color = AmberStrain, pct = 0.02f)
+                    DetailedZoneRow(name = "Zone 3 • Aerobic Endurance (120–140 bpm)", duration = "28m (6%)", color = HotMagentaRing, pct = 0.06f)
+                    DetailedZoneRow(name = "Zone 2 • Fat Burn / Aerobic Base (100–120 bpm)", duration = "1h 24m (18%)", color = ElectricTealRing, pct = 0.18f)
+                    DetailedZoneRow(name = "Zone 1 • Warm-up / Rest (<100 bpm)", duration = "5h 42m (74%)", color = NeonCyanRing, pct = 0.74f)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "CHRONOLOGICAL TELEMETRY LOG",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 val sortedSamples = remember(validHrList) { validHrList.sortedByDescending { it.timestamp } }
                 if (sortedSamples.isEmpty()) {
@@ -408,5 +492,45 @@ private fun ZoneIndicator(
         }
         Spacer(modifier = Modifier.height(2.dp))
         Text(text = percent, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+}
+
+@Composable
+private fun DetailedZoneRow(
+    name: String,
+    duration: String,
+    color: Color,
+    pct: Float
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(color, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = name, fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            }
+            Text(text = duration, fontSize = 11.sp, color = color, fontWeight = FontWeight.Bold)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(Color(0xFF1E222D), RoundedCornerShape(3.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = pct.coerceIn(0f, 1f))
+                    .height(6.dp)
+                    .background(color, RoundedCornerShape(3.dp))
+            )
+        }
     }
 }

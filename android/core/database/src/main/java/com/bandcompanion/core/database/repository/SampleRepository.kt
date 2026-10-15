@@ -10,7 +10,7 @@ class SampleRepository(private val sampleDao: SampleDao) {
     suspend fun saveSamples(deviceId: String, samples: List<SampleMetric>) {
         if (samples.isEmpty()) return
         val entities = samples.map { SampleMetricEntity.fromDomainModel(deviceId, it) }
-        sampleDao.insertSamples(entities)
+        sampleDao.upsertMergedSamples(entities)
     }
 
     fun getSamplesBetween(deviceId: String, startTime: Long, endTime: Long): Flow<List<SampleMetric>> {

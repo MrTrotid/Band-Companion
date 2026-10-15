@@ -4,13 +4,41 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import com.bandcompanion.core.database.entity.SampleMetricEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SampleDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSamples(samples: List<SampleMetricEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRawSamples(samples: List<SampleMetricEntity>): List<Long>
+
+    @Update
+    suspend fun updateSample(sample: SampleMetricEntity)
+
+    @Query("SELECT * FROM sample_metric WHERE device_id = :deviceId AND timestamp = :timestamp LIMIT 1")
+    suspend fun getSample(deviceId: String, timestamp: Long): SampleMetricEntity?
+
+    @Transaction
+    suspend fun upsertMergedSamples(samples: List<SampleMetricEntity>) {
+        for (sample in samples) {
+            val existing = getSample(sample.deviceId, sample.timestamp)
+            if (existing == null) {
+                insertRawSamples(listOf(sample))
+            } else {
+                val merged = existing.copy(
+                    steps = if (sample.steps > 0) sample.steps else existing.steps,
+                    heartRate = sample.heartRate ?: existing.heartRate,
+                    spo2Percent = sample.spo2Percent ?: existing.spo2Percent,
+                    calories = if (sample.calories > 0) sample.calories else existing.calories,
+                    intensity = if (sample.intensity > 0) sample.intensity else existing.intensity,
+                    source = if (sample.source.isNotEmpty()) sample.source else existing.source
+                )
+                updateSample(merged)
+            }
+        }
+    }
 
     @Query("SELECT * FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp ASC")
     fun getSamplesBetween(deviceId: String, startTime: Long, endTime: Long): Flow<List<SampleMetricEntity>>

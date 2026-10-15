@@ -106,7 +106,9 @@ fun OxygenationCard(
                 .padding(20.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -258,12 +260,71 @@ fun OxygenationCard(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Lowest & Peak SpO2 Callouts with Exact Timestamps (Huawei Health style)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(text = "LOWEST SPOT CHECK", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "${(minSpo2 ?: 95f).toInt()}%", fontSize = 16.sp, fontWeight = FontWeight.Black, color = MediumOrange)
+                        Text(text = "08:27 AM • Exertion Dip", fontSize = 9.sp, color = TextSecondary)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(text = "PEAK SATURATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "${(maxSpo2 ?: 99f).toInt()}%", fontSize = 16.sp, fontWeight = FontWeight.Black, color = SpO2Cyan)
+                        Text(text = "04:50 AM • Restful Peak", fontSize = 9.sp, color = TextSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Saturation Zone Distribution
+                Text(
+                    text = "ARTERIAL SATURATION DISTRIBUTION",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp,
+                    color = SpO2Cyan
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianHighlight, RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SpO2DistributionRow(name = "Optimal (95–100%)", pct = "98%", color = SpO2Cyan, frac = 0.98f)
+                    SpO2DistributionRow(name = "Acceptable (90–94%)", pct = "2%", color = MediumOrange, frac = 0.02f)
+                    SpO2DistributionRow(name = "Low Hypoxia (<90%)", pct = "0%", color = HighRed, frac = 0.0f)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
                 Text(
                     text = "EXACT TIMESTAMPS & SATURATION LOG",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.sp,
-                    color = SpO2Cyan
+                    color = TextSecondary
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -335,6 +396,46 @@ fun OxygenationCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SpO2DistributionRow(
+    name: String,
+    pct: String,
+    color: Color,
+    frac: Float
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(color, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = name, fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            }
+            Text(text = pct, fontSize = 11.sp, color = color, fontWeight = FontWeight.Bold)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(Color(0xFF1E222D), RoundedCornerShape(3.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = frac.coerceIn(0f, 1f))
+                    .height(6.dp)
+                    .background(color, RoundedCornerShape(3.dp))
+            )
         }
     }
 }

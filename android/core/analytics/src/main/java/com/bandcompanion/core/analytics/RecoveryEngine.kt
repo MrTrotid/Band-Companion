@@ -2,12 +2,13 @@ package com.bandcompanion.core.analytics
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Multi-parameter physiological recovery & readiness scoring model (0–100%).
  *
- * Implements the weighted formula:
- * Recovery = 0.40 * S_HRV + 0.25 * S_RHR + 0.20 * S_Sleep + 0.15 * S_SpO2
+ * Implements the weighted formula with dynamic weight re-normalization (MATH-01):
+ * Recovery = (w_hrv * S_hrv + w_rhr * S_rhr + w_sleep * S_sleep + w_spo2 * S_spo2) / sum(valid_weights)
  */
 object RecoveryEngine {
 
@@ -17,11 +18,13 @@ object RecoveryEngine {
         val rhrScore: Int,
         val sleepScore: Int,
         val spo2Score: Int,
-        val label: String
+        val label: String,
+        val isPartial: Boolean = false
     )
 
     /**
      * Calculates the readiness score from overnight biomarkers and historical baselines.
+     * Dynamically re-normalizes weights when components are missing (MATH-01).
      *
      * @param overnightHrv Average nocturnal HRV (ms) from TruSleep 700013.
      * @param minHrvBaseline Lower bound of user's typical HRV baseline (ms).
@@ -45,9 +48,32 @@ object RecoveryEngine {
         val sSleep = (sleepQualityScore ?: 70).coerceIn(0, 100)
         val sSpo2 = computeSpo2Score(overnightSpo2)
 
-        val total = (0.40f * sHrv + 0.25f * sRhr + 0.20f * sSleep + 0.15f * sSpo2)
-            .toInt()
-            .coerceIn(0, 100)
+        val weightedParts = mutableListOf<Pair<Float, Float>>() // Pair<Weight, ComponentScore>
+
+        if (overnightHrv != null && minHrvBaseline != null && maxHrvBaseline != null && maxHrvBaseline > minHrvBaseline) {
+            weightedParts.add(0.40f to sHrv.toFloat())
+        }
+        if (overnightRhr != null && baselineRhr != null && baselineRhr > 30f) {
+            weightedParts.add(0.25f to sRhr.toFloat())
+        }
+        if (sleepQualityScore != null && sleepQualityScore > 0) {
+            weightedParts.add(0.20f to sSleep.toFloat())
+        }
+        if (overnightSpo2 != null && overnightSpo2 >= 70f) {
+            weightedParts.add(0.15f to sSpo2.toFloat())
+        }
+
+        val isPartial = weightedParts.size < 4
+        val total = if (weightedParts.isNotEmpty()) {
+            val totalWeight = weightedParts.sumOf { it.first.toDouble() }.toFloat()
+            val weightedSum = weightedParts.sumOf { (it.first * it.second).toDouble() }.toFloat()
+            (weightedSum / totalWeight).roundToInt().coerceIn(1, 100)
+        } else {
+            // Default baseline when no overnight data has synced yet
+            (0.40f * sHrv + 0.25f * sRhr + 0.20f * sSleep + 0.15f * sSpo2)
+                .toInt()
+                .coerceIn(0, 100)
+        }
 
         val label = when {
             total >= 67 -> "Optimal Recovery"
@@ -61,7 +87,8 @@ object RecoveryEngine {
             rhrScore = sRhr,
             sleepScore = sSleep,
             spo2Score = sSpo2,
-            label = label
+            label = label,
+            isPartial = isPartial
         )
     }
 
