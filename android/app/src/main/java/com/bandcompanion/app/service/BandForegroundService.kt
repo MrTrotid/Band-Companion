@@ -48,7 +48,8 @@ class BandForegroundService : Service() {
         const val ACTION_STOP = "com.bandcompanion.app.ACTION_STOP"
         const val ACTION_SYNC_NOW = "com.bandcompanion.app.ACTION_SYNC_NOW"
 
-        const val SYNC_INTERVAL_MS = 60_000L // 1 minute autonomous background sync
+        // Relaxed 15-minute background sync interval to preserve watch battery life
+        const val SYNC_INTERVAL_MS = 15 * 60_000L
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
@@ -137,8 +138,9 @@ class BandForegroundService : Service() {
 
                             bleManager.protocolHandler.executePostAuthBootstrap()
                             bleManager.protocolHandler.enablePassiveHealthSettings()
-                            // Keep live heart rate streaming in background
-                            bleManager.protocolHandler.openRealtimeHeartRateStream(3)
+                            // Ensure battery-draining continuous PPG sensor streaming is closed on the watch
+                            bleManager.protocolHandler.closeRealtimeHeartRateStream(4)
+                            bleManager.protocolHandler.stopLiveStressTest()
                             updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 85}%")
                             startKeepaliveLoop()
                             triggerDataSync()
@@ -202,9 +204,7 @@ class BandForegroundService : Service() {
                         continue
                     }
 
-                    // Keep live continuous HR streaming active
-                    bleManager.protocolHandler.openRealtimeHeartRateStream(3)
-
+                    // Low-power BLE keepalive: query battery to maintain connection without waking optical PPG sensors
                     val battery = bleManager.protocolHandler.queryBattery()
                     val now = System.currentTimeMillis()
                     val batVal = battery ?: bleManager.protocolHandler.batteryLevel.value
@@ -273,7 +273,7 @@ class BandForegroundService : Service() {
             hourSamples.sumOf { it.steps ?: 0 } >= 30
         }
 
-        val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 35..220 }
+        val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 48..220 }
         val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
         val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
         val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null

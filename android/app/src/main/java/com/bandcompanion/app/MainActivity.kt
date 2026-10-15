@@ -196,6 +196,12 @@ class MainActivity : ComponentActivity() {
         }
         startService(intent)
     }
+
+    override fun onResume() {
+        super.onResume()
+        // On-demand sync: update health metrics and telemetry whenever user opens or switches back to the app
+        triggerManualSync()
+    }
 }
 
 enum class NavigationTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -367,8 +373,12 @@ fun MainAppContent(
             if (bat != null) {
                 deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
             }
-            // Open real-time HR stream so current BPM updates continuously
-            bleManager.protocolHandler.openRealtimeHeartRateStream(3)
+            // Ensure battery-draining continuous PPG sensor streaming is turned off on the watch
+            bleManager.protocolHandler.closeRealtimeHeartRateStream(4)
+            bleManager.protocolHandler.stopLiveStressTest()
+
+            // On-demand sync: pull latest steps, heart rate records, and sleep from watch memory
+            onSyncRequested()
         }
     }
 

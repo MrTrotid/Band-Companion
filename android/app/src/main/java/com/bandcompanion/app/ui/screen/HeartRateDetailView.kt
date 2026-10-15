@@ -226,7 +226,7 @@ fun HeartRateDetailView(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (currentBpm != null) "LIVE PULSE DETECTED" else "HISTORICAL TELEMETRY",
+                            text = if (currentBpm != null) "LATEST SYNCHRONIZED PULSE" else "AWAITING SYNC",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
