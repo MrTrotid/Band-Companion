@@ -1,10 +1,7 @@
 package com.bandcompanion.app.ui.component
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,18 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,13 +25,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,14 +42,12 @@ import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
 import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import com.bandcompanion.core.model.MoodEntry
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * Whoop / Oura Athletic Emotional Wellbeing & Autonomic Stress Module.
- * Displays daily stress score (0-100), automated on-wrist 3-state emotional valence
- * (Pleasant / Neutral / Unpleasant), and expandable chronological log of on-wrist TruRelax™ readings.
+ * Editorial Emotional Wellbeing & Autonomic Stress Overview Card.
+ * Displays daily stress score (0-100), automated on-wrist 3-state emotional valence,
+ * and physical stillness gating diagnostic.
+ * Navigates to dedicated Stress & Wellbeing Deep Telemetry page via breadcrumbs (no dropdowns).
  */
 @Composable
 fun EmotionalWellbeingCard(
@@ -69,15 +55,9 @@ fun EmotionalWellbeingCard(
     latestMood: MoodEntry? = null,
     onLogMoodClick: () -> Unit = {},
     stressRecords: List<BandProtocolHandler.StressRecord> = emptyList(),
+    onOpenDetail: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (isExpanded) 180f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "stressChevron"
-    )
-
     val displayStress = stressScore ?: 39
     val (valenceLabel, valenceDescription, stressColor) = when {
         displayStress < 30 -> Triple("Pleasant • Relaxed", "Calm parasympathetic recovery & high vagal tone", RelaxedGreen)
@@ -89,8 +69,7 @@ fun EmotionalWellbeingCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { isExpanded = !isExpanded }
-            .animateContentSize(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)),
+            .clickable { onOpenDetail() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
@@ -100,9 +79,7 @@ fun EmotionalWellbeingCard(
                 .padding(20.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded },
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -122,7 +99,10 @@ fun EmotionalWellbeingCard(
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Box(
                         modifier = Modifier
                             .background(stressColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
@@ -136,12 +116,10 @@ fun EmotionalWellbeingCard(
                         )
                     }
                     Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Expand stress log",
-                        tint = TextMuted,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .rotate(chevronRotation)
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Open Stress Details",
+                        tint = stressColor,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
@@ -196,7 +174,7 @@ fun EmotionalWellbeingCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3-State Automatic Emotional Valence Distribution (Section 8.1 of Research)
+            // 3-State Automatic Emotional Valence Distribution
             Text(
                 text = "DAILY EMOTIONAL VALENCE DISTRIBUTION",
                 fontSize = 10.sp,
@@ -235,7 +213,7 @@ fun EmotionalWellbeingCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Physical Stillness Gate & Motion-Gating Diagnostic (Section 8.2)
+            // Physical Stillness Gate & Motion-Gating Diagnostic
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -250,7 +228,7 @@ fun EmotionalWellbeingCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Physical Stillness Gate Active • Gated during movement to prevent exertion from skewing autonomic tone",
+                        text = "Physical Stillness Gate Active • Gated during movement to prevent physical exertion from skewing autonomic tone",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium,
                         color = TextMuted,
@@ -259,132 +237,35 @@ fun EmotionalWellbeingCard(
                 }
             }
 
-            // Expandable Exact Timestamps Section
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.75.dp)
-                        .background(TextMuted.copy(alpha = 0.2f))
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Peak & Minimum Stress Callouts with Timestamps
+            // Bottom Affordance: Breadcrumbs / Details link
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                    .border(0.75.dp, stressColor.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
-                            .padding(10.dp)
-                    ) {
-                        Text(text = "LOWEST STRESS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "15 / 100", fontSize = 16.sp, fontWeight = FontWeight.Black, color = RelaxedGreen)
-                        Text(text = "04:10 AM • Deep Sleep", fontSize = 9.sp, color = TextSecondary)
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
-                            .padding(10.dp)
-                    ) {
-                        Text(text = "PEAK STRESS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "64 / 100", fontSize = 16.sp, fontWeight = FontWeight.Black, color = MediumOrange)
-                        Text(text = "08:20 AM • Commute Load", fontSize = 9.sp, color = TextSecondary)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "EXACT TIMESTAMPS & TRURELAX™ LOG",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.sp,
-                    color = stressColor
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                val sortedRecords = remember(stressRecords) { stressRecords.sortedByDescending { it.timestamp } }
-                if (sortedRecords.isEmpty()) {
-                    // Fallback to verified records from today's on-wrist TruRelax measurements
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val sampleTimelines = listOf(
-                            Triple("08:50 AM", 37, "Pleasant • Balanced"),
-                            Triple("08:20 AM", 45, "Pleasant • Balanced"),
-                            Triple("07:50 AM", 38, "Pleasant • Balanced"),
-                            Triple("07:10 AM", 43, "Pleasant • Balanced"),
-                            Triple("06:40 AM", 34, "Pleasant • Relaxed"),
-                            Triple("06:03 AM", 28, "Pleasant • Morning Waking")
-                        )
-                        for ((timeStr, score, label) in sampleTimelines) {
-                            val color = if (score < 30) RelaxedGreen else NormalBlue
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(ObsidianHighlight.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(text = timeStr, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                    Text(text = label, fontSize = 10.sp, color = color, fontWeight = FontWeight.Medium)
-                                }
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(text = "$score", fontSize = 18.sp, fontWeight = FontWeight.Black, color = TextPrimary)
-                                    Text(text = "/100", fontSize = 10.sp, color = TextMuted, modifier = Modifier.padding(bottom = 2.dp))
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 240.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        for (r in sortedRecords.take(40)) {
-                            val timeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(r.timestamp * 1000L))
-                            val (levelName, levelColor) = when {
-                                r.score < 30 -> "Pleasant • Relaxed" to RelaxedGreen
-                                r.score < 60 -> "Pleasant • Balanced" to NormalBlue
-                                r.score < 80 -> "Unpleasant • Elevated" to MediumOrange
-                                else -> "Very Unpleasant • High" to HighRed
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(ObsidianHighlight.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(text = timeStr, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                    Text(text = levelName, fontSize = 10.sp, color = levelColor, fontWeight = FontWeight.Medium)
-                                }
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(text = "${r.score}", fontSize = 18.sp, fontWeight = FontWeight.Black, color = TextPrimary)
-                                    Text(text = "/100", fontSize = 10.sp, color = TextMuted, modifier = Modifier.padding(bottom = 2.dp))
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = "EXPLORE TRURELAX™ CURVE & STRESS TELEMETRY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.8.sp,
+                        color = stressColor
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = stressColor,
+                        modifier = Modifier.size(12.dp)
+                    )
                 }
             }
         }
@@ -415,7 +296,7 @@ private fun ValenceSegment(
             Text(text = label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
         }
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = percent, fontSize = 13.sp, fontWeight = FontWeight.Black, color = color)
-        Text(text = duration, fontSize = 9.sp, color = TextSecondary)
+        Text(text = percent, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text(text = duration, fontSize = 8.sp, color = TextSecondary)
     }
 }

@@ -3,6 +3,7 @@ package com.bandcompanion.app.ui.screen
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Bedtime
@@ -292,10 +294,14 @@ fun SleepDebtCard() {
  * 3. Autonomic HRV Resilience Radar (rMSSD) Card.
  */
 @Composable
-fun HrvRadarCard() {
+fun HrvRadarCard(
+    onOpenDetail: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .clickable { onOpenDetail() }
             .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = NeonTeal.copy(alpha = 0.2f)),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard)
@@ -317,7 +323,10 @@ fun HrvRadarCard() {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = "AUTONOMIC HRV RESILIENCE", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
                     }
-                    Text(text = "Baseline 51–78 ms", fontSize = 11.sp, color = TextMuted)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = "Baseline 51–78 ms", fontSize = 11.sp, color = TextMuted)
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NeonTeal, modifier = Modifier.size(14.dp))
+                    }
                 }
 
                 Row(

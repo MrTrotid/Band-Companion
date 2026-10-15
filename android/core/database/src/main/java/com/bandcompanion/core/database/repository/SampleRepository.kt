@@ -34,4 +34,8 @@ class SampleRepository(private val sampleDao: SampleDao) {
     suspend fun getTotalStepsBetween(deviceId: String, startTime: Long, endTime: Long): Int {
         return sampleDao.getTotalStepsBetween(deviceId, startTime, endTime) ?: 0
     }
+
+    suspend fun purgeInvalidHeartRates(): Int {
+        return sampleDao.purgeInvalidHeartRates()
+    }
 }

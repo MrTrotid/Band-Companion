@@ -49,14 +49,17 @@ interface SampleDao {
     @Query("SELECT * FROM sample_metric WHERE device_id = :deviceId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestSample(deviceId: String): SampleMetricEntity?
 
-    @Query("SELECT AVG(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate > 35 AND heart_rate < 230")
+    @Query("SELECT AVG(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate >= 48 AND heart_rate <= 220")
     suspend fun getAverageHeartRateBetween(deviceId: String, startTime: Long, endTime: Long): Float?
 
-    @Query("SELECT MIN(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate > 35")
+    @Query("SELECT MIN(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate >= 48 AND heart_rate <= 220")
     suspend fun getMinHeartRateBetween(deviceId: String, startTime: Long, endTime: Long): Int?
 
-    @Query("SELECT MAX(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate < 230")
+    @Query("SELECT MAX(heart_rate) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime AND heart_rate >= 48 AND heart_rate <= 220")
     suspend fun getMaxHeartRateBetween(deviceId: String, startTime: Long, endTime: Long): Int?
+
+    @Query("UPDATE sample_metric SET heart_rate = NULL WHERE heart_rate < 48 OR heart_rate > 220")
+    suspend fun purgeInvalidHeartRates(): Int
 
     @Query("SELECT SUM(steps) FROM sample_metric WHERE device_id = :deviceId AND timestamp BETWEEN :startTime AND :endTime")
     suspend fun getTotalStepsBetween(deviceId: String, startTime: Long, endTime: Long): Int?

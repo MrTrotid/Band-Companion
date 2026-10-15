@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -53,6 +55,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -75,60 +78,42 @@ import kotlin.math.roundToInt
  * Features:
  * - Floating rounded capsule geometry elevated from screen edge
  * - Glassmorphic obsidian translucent backdrop with specular gradient rim stroke
- * - Continuous 1:1 liquid gesture tracking: indicator glides with HorizontalPager swipe
- * - Dynamic icon scaling and glowing micro-dot on active tab
+ * - Direct 1:1 finger-matching scrub: dragging across dock selects sections immediately
+ * - Optical and geometric icon centering with responsive neon pill tracker
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AthleticNavigationBar(
     pagerState: PagerState,
     onTabSelected: (Int) -> Unit,
+    onTabScrubbed: (Int) -> Unit = onTabSelected,
     modifier: Modifier = Modifier
 ) {
     val tabs = NavigationTab.values()
-    val continuousOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
     val coroutineScope = rememberCoroutineScope()
-    var accumulatedDragX by remember { mutableStateOf(0f) }
+    var dragContinuousOffset by remember { mutableStateOf<Float?>(null) }
+
+    val continuousOffset = dragContinuousOffset
+        ?: (pagerState.currentPage + pagerState.currentPageOffsetFraction)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-            .draggable(
-                orientation = Orientation.Horizontal,
-                state = rememberDraggableState { delta ->
-                    accumulatedDragX += delta
-                    coroutineScope.launch {
-                        pagerState.dispatchRawDelta(delta)
-                    }
-                },
-                onDragStopped = { velocity ->
-                    coroutineScope.launch {
-                        val pageDelta = when {
-                            velocity > 250f || accumulatedDragX > 40f -> 1
-                            velocity < -250f || accumulatedDragX < -40f -> -1
-                            else -> 0
-                        }
-                        accumulatedDragX = 0f
-                        val targetPage = (pagerState.currentPage + pageDelta).coerceIn(0, tabs.size - 1)
-                        pagerState.animateScrollToPage(targetPage)
-                    }
-                }
-            ),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Floating glass capsule container
+        // Floating glass capsule container with direct 1:1 finger scrubbing
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(58.dp)
                 .shadow(
                     elevation = 20.dp,
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(29.dp),
                     ambientColor = NeonCyanRing.copy(alpha = 0.25f),
                     spotColor = ElectricCyan.copy(alpha = 0.35f)
                 )
-                .clip(RoundedCornerShape(34.dp))
+                .clip(RoundedCornerShape(29.dp))
                 .background(GlassDockBackground)
                 .border(
                     width = 1.dp,
@@ -140,8 +125,42 @@ fun AthleticNavigationBar(
                             GlassDockBorder.copy(alpha = 0.4f)
                         )
                     ),
-                    shape = RoundedCornerShape(34.dp)
+                    shape = RoundedCornerShape(29.dp)
                 )
+                .pointerInput(tabs.size) {
+                    detectTapGestures { offset ->
+                        val fraction = (offset.x / size.width).coerceIn(0f, 0.999f)
+                        val targetIndex = (fraction * tabs.size).toInt().coerceIn(0, tabs.size - 1)
+                        onTabSelected(targetIndex)
+                    }
+                }
+                .pointerInput(tabs.size) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            val fraction = (offset.x / size.width).coerceIn(0f, 0.999f)
+                            val exactSection = fraction * tabs.size
+                            val targetIndex = exactSection.toInt().coerceIn(0, tabs.size - 1)
+                            dragContinuousOffset = targetIndex.toFloat()
+                            onTabScrubbed(targetIndex)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val fraction = (change.position.x / size.width).coerceIn(0f, 0.999f)
+                            val exactSection = fraction * tabs.size
+                            val targetIndex = exactSection.toInt().coerceIn(0, tabs.size - 1)
+                            dragContinuousOffset = (exactSection - 0.5f).coerceIn(0f, (tabs.size - 1).toFloat())
+                            if (targetIndex != pagerState.currentPage) {
+                                onTabScrubbed(targetIndex)
+                            }
+                        },
+                        onDragEnd = {
+                            dragContinuousOffset = null
+                        },
+                        onDragCancel = {
+                            dragContinuousOffset = null
+                        }
+                    )
+                }
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val totalWidth = maxWidth
@@ -158,8 +177,8 @@ fun AthleticNavigationBar(
                         }
                         .width(tabWidth)
                         .fillMaxHeight()
-                        .padding(horizontal = 4.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(28.dp))
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(25.dp))
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
@@ -176,14 +195,13 @@ fun AthleticNavigationBar(
                                     Color.Transparent
                                 )
                             ),
-                            shape = RoundedCornerShape(28.dp)
+                            shape = RoundedCornerShape(25.dp)
                         )
                 )
 
-                // Navigation Tab Items Row
+                // Navigation Tab Items Row - Perfectly Centered Icons
                 Row(
                     modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     tabs.forEachIndexed { index, tab ->
@@ -194,41 +212,35 @@ fun AthleticNavigationBar(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) {
-                                    onTabSelected(index)
-                                },
+                                .fillMaxHeight(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                            // Optically and geometrically centered icon container
+                            Box(
+                                modifier = Modifier.size(28.dp),
+                                contentAlignment = Alignment.Center
                             ) {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.label,
+                                    tint = if (proximity > 0.5f) ElectricCyan else TextMuted,
+                                    modifier = Modifier
+                                        .size(23.dp)
+                                        .scale(iconScale)
+                                )
+                            }
+
+                            // Glowing cyan micro-dot for active tab indicator
+                            if (proximity > 0.6f) {
                                 Box(
-                                    modifier = Modifier.size(26.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = tab.label,
-                                        tint = if (proximity > 0.5f) ElectricCyan else TextMuted,
-                                        modifier = Modifier
-                                            .size(22.dp)
-                                            .scale(iconScale)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                Text(
-                                    text = tab.label.uppercase(),
-                                    color = if (proximity > 0.5f) TextPrimary else TextMuted,
-                                    fontSize = 8.5.sp,
-                                    fontWeight = if (proximity > 0.5f) FontWeight.Black else FontWeight.SemiBold,
-                                    letterSpacing = 0.5.sp
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 5.dp)
+                                        .size(4.dp)
+                                        .background(
+                                            color = ElectricCyan.copy(alpha = proximity),
+                                            shape = CircleShape
+                                        )
                                 )
                             }
                         }

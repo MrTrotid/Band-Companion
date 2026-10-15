@@ -263,7 +263,7 @@ class BandProtocolHandler(
 
                                     if (rri != null && rri in 300..1800) {
                                         val hr = 60000 / rri
-                                        if (hr in 35..220) {
+                                        if (hr in 48..220) {
                                             _liveHeartRateFlow.value = hr
                                         }
                                     }
@@ -281,7 +281,7 @@ class BandProtocolHandler(
                                     val hr = item[0x03]?.let { bytes ->
                                         if (bytes.isNotEmpty()) bytes[0].toInt() and 0xFF else null
                                     }
-                                    if (hr != null && hr in 35..220) {
+                                    if (hr != null && hr in 48..220) {
                                         _liveHeartRateFlow.value = hr
                                     }
                                 }
@@ -1453,7 +1453,7 @@ class BandProtocolHandler(
                 val steps = features["steps"] ?: 0
                 val calories = features["calories"] ?: 0
                 val hr = features["heart_rate"]
-                val validHr = if (hr != null && hr in 35..230) hr else null
+                val validHr = if (hr != null && hr in 48..220) hr else null
                 val spo2 = features["spo2"]
                 val validSpo2 = if (spo2 != null && spo2 in 70..100) spo2.toFloat() else null
 

@@ -1,16 +1,13 @@
 package com.bandcompanion.app.ui.component
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,29 +16,23 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -51,29 +42,24 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bandcompanion.app.ui.theme.AmberStrain
 import com.bandcompanion.app.ui.theme.CrimsonStrain
+import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.ElectricTealRing
-import com.bandcompanion.app.ui.theme.HighRed
 import com.bandcompanion.app.ui.theme.HotMagentaRing
-import com.bandcompanion.app.ui.theme.MediumOrange
 import com.bandcompanion.app.ui.theme.NeonCyanRing
-import com.bandcompanion.app.ui.theme.NormalBlue
 import com.bandcompanion.app.ui.theme.ObsidianCard
 import com.bandcompanion.app.ui.theme.ObsidianHighlight
-import com.bandcompanion.app.ui.theme.RelaxedGreen
 import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
 import com.bandcompanion.core.model.SampleMetric
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.Calendar
 
 /**
- * Whoop-styled Cardiovascular Strain & Continuous Heart Rate Card.
- * Displays live pulse, resting baseline, daily range (min/max), continuous curve,
- * and an expandable chronological log with exact timestamps and cardiac zones.
+ * Editorial Cardiovascular Strain & Continuous Heart Rate Overview Card.
+ * Displays live pulse, resting baseline, daily range (min/max), and a discontinuous
+ * 24-hour preview waveform with clear empty gaps for unworn periods (no fake data).
+ * Navigates to dedicated Heart Rate Deep Telemetry page via breadcrumbs.
  */
 @Composable
 fun HeartRateCard(
@@ -82,15 +68,9 @@ fun HeartRateCard(
     minBpm: Int?,
     maxBpm: Int?,
     hrSamples: List<SampleMetric>,
+    onOpenDetail: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (isExpanded) 180f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "chevronRotation"
-    )
-
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
@@ -102,13 +82,16 @@ fun HeartRateCard(
         label = "pulseScale"
     )
 
-    val validHrList = remember(hrSamples) { hrSamples.filter { it.heartRate != null } }
+    // Filter valid heart rate samples (48..220 bpm) to eliminate optical artifacts
+    val validHrList = remember(hrSamples) {
+        hrSamples.filter { it.heartRate != null && it.heartRate!! in 48..220 }
+            .sortedBy { it.timestamp }
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { isExpanded = !isExpanded }
-            .animateContentSize(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)),
+            .clickable { onOpenDetail() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
@@ -117,10 +100,9 @@ fun HeartRateCard(
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
+            // Header Row: Category Badge + Navigation Affordance
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded },
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -141,20 +123,21 @@ fun HeartRateCard(
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = if (restingBpm != null) "Resting $restingBpm bpm" else "Continuous 24/7",
+                        text = if (restingBpm != null) "Resting $restingBpm bpm" else "24/7 Continuous",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = CrimsonStrain
                     )
                     Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Expand heart rate log",
-                        tint = TextMuted,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .rotate(chevronRotation)
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Open Heart Rate Details",
+                        tint = CrimsonStrain,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
@@ -166,8 +149,9 @@ fun HeartRateCard(
                 verticalAlignment = Alignment.Bottom,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val displayBpm = currentBpm ?: restingBpm
                 Text(
-                    text = currentBpm?.toString() ?: (restingBpm?.toString() ?: "--"),
+                    text = displayBpm?.toString() ?: "--",
                     fontSize = 38.sp,
                     fontWeight = FontWeight.Black,
                     color = TextPrimary
@@ -191,7 +175,7 @@ fun HeartRateCard(
                         color = TextMuted
                     )
                     Text(
-                        text = "${minBpm ?: "--"} - ${maxBpm ?: "--"} bpm",
+                        text = if (minBpm != null && maxBpm != null) "$minBpm - $maxBpm bpm" else "-- bpm",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -199,61 +183,111 @@ fun HeartRateCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Continuous HR 24h Area Graph
-            val hrValues = remember(validHrList) { validHrList.mapNotNull { it.heartRate } }
+            // Continuous 24h Area Graph with True Time-Axis & Empty Gaps for Unworn Intervals
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(90.dp)
+                    .height(95.dp)
                     .background(ObsidianHighlight, RoundedCornerShape(14.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                if (hrValues.size >= 2) {
+                if (validHrList.isNotEmpty()) {
                     Canvas(modifier = Modifier.matchParentSize()) {
+                        val hrValues = validHrList.mapNotNull { it.heartRate }
                         val minVal = (hrValues.minOrNull() ?: 50).toFloat().coerceAtLeast(40f)
                         val maxVal = (hrValues.maxOrNull() ?: 160).toFloat().coerceAtLeast(minVal + 20f)
                         val range = maxVal - minVal
 
-                        val strokePath = Path()
-                        val fillPath = Path()
+                        // Midnight reference for current day
+                        val cal = Calendar.getInstance()
+                        cal.set(Calendar.HOUR_OF_DAY, 0)
+                        cal.set(Calendar.MINUTE, 0)
+                        cal.set(Calendar.SECOND, 0)
+                        cal.set(Calendar.MILLISECOND, 0)
+                        val midnightEpochSec = cal.timeInMillis / 1000L
+                        val totalDaySeconds = 86400f
 
-                        hrValues.forEachIndexed { index, hr ->
-                            val x = index.toFloat() / (hrValues.size - 1) * size.width
-                            val normY = 1f - ((hr - minVal) / range)
-                            val y = normY * (size.height - 10f) + 5f
+                        // Split into discontinuous segments (gaps > 600s / 10m indicate watch off-wrist)
+                        val segments = mutableListOf<MutableList<SampleMetric>>()
+                        var currentSegment = mutableListOf<SampleMetric>()
 
-                            if (index == 0) {
-                                strokePath.moveTo(x, y)
-                                fillPath.moveTo(x, size.height)
-                                fillPath.lineTo(x, y)
+                        for (sample in validHrList) {
+                            if (currentSegment.isEmpty()) {
+                                currentSegment.add(sample)
                             } else {
-                                strokePath.lineTo(x, y)
-                                fillPath.lineTo(x, y)
+                                val prevSample = currentSegment.last()
+                                if (sample.timestamp - prevSample.timestamp > 600L) {
+                                    segments.add(currentSegment)
+                                    currentSegment = mutableListOf(sample)
+                                } else {
+                                    currentSegment.add(sample)
+                                }
                             }
                         }
+                        if (currentSegment.isNotEmpty()) {
+                            segments.add(currentSegment)
+                        }
 
-                        fillPath.lineTo(size.width, size.height)
-                        fillPath.close()
-
-                        // Fill gradient under curve
-                        drawPath(
-                            path = fillPath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    CrimsonStrain.copy(alpha = 0.35f),
-                                    CrimsonStrain.copy(alpha = 0.02f)
+                        // Draw each continuous segment independently (preserving empty space where unworn)
+                        for (segment in segments) {
+                            if (segment.size == 1) {
+                                val s = segment.first()
+                                val secFromMidnight = (s.timestamp - midnightEpochSec).coerceIn(0L, 86400L)
+                                val x = (secFromMidnight / totalDaySeconds) * size.width
+                                val normY = 1f - ((s.heartRate!! - minVal) / range)
+                                val y = normY * (size.height - 12f) + 6f
+                                drawCircle(
+                                    color = CrimsonStrain,
+                                    radius = 3.dp.toPx(),
+                                    center = Offset(x, y)
                                 )
-                            )
-                        )
+                            } else {
+                                val strokePath = Path()
+                                val fillPath = Path()
 
-                        // Line stroke
-                        drawPath(
-                            path = strokePath,
-                            color = CrimsonStrain,
-                            style = Stroke(width = 2.5.dp.toPx())
-                        )
+                                segment.forEachIndexed { idx, s ->
+                                    val secFromMidnight = (s.timestamp - midnightEpochSec).coerceIn(0L, 86400L)
+                                    val x = (secFromMidnight / totalDaySeconds) * size.width
+                                    val normY = 1f - ((s.heartRate!! - minVal) / range)
+                                    val y = normY * (size.height - 12f) + 6f
+
+                                    if (idx == 0) {
+                                        strokePath.moveTo(x, y)
+                                        fillPath.moveTo(x, size.height)
+                                        fillPath.lineTo(x, y)
+                                    } else {
+                                        strokePath.lineTo(x, y)
+                                        fillPath.lineTo(x, y)
+                                    }
+                                }
+
+                                val lastSample = segment.last()
+                                val lastSec = (lastSample.timestamp - midnightEpochSec).coerceIn(0L, 86400L)
+                                val lastX = (lastSec / totalDaySeconds) * size.width
+                                fillPath.lineTo(lastX, size.height)
+                                fillPath.close()
+
+                                // Fill gradient under segment
+                                drawPath(
+                                    path = fillPath,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            CrimsonStrain.copy(alpha = 0.35f),
+                                            CrimsonStrain.copy(alpha = 0.02f)
+                                        )
+                                    )
+                                )
+
+                                // Stroke line for segment
+                                drawPath(
+                                    path = strokePath,
+                                    color = CrimsonStrain,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                        }
                     }
                 } else {
                     Row(
@@ -269,7 +303,7 @@ fun HeartRateCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "24/7 Continuous PPG Active • Accumulating samples",
+                            text = "Awaiting Wrist Placement • No Telemetry",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             color = TextMuted
@@ -286,21 +320,20 @@ fun HeartRateCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(text = "00:00", fontSize = 9.sp, color = TextMuted)
-                Text(text = "04:00", fontSize = 9.sp, color = TextMuted)
-                Text(text = "08:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "06:00", fontSize = 9.sp, color = TextMuted)
                 Text(text = "12:00", fontSize = 9.sp, color = TextMuted)
-                Text(text = "16:00", fontSize = 9.sp, color = TextMuted)
-                Text(text = "20:00", fontSize = 9.sp, color = TextMuted)
+                Text(text = "18:00", fontSize = 9.sp, color = TextMuted)
                 Text(text = "23:59", fontSize = 9.sp, color = TextMuted)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // HR Zone Distribution Pill
-            val zone1 = remember(hrValues) { if (hrValues.isEmpty()) 55 else (hrValues.count { it < 60 } * 100 / hrValues.size) }
-            val zone2 = remember(hrValues) { if (hrValues.isEmpty()) 28 else (hrValues.count { it in 60..99 } * 100 / hrValues.size) }
-            val zone3 = remember(hrValues) { if (hrValues.isEmpty()) 12 else (hrValues.count { it in 100..139 } * 100 / hrValues.size) }
-            val zone4 = remember(hrValues) { if (hrValues.isEmpty()) 5 else (hrValues.count { it >= 140 } * 100 / hrValues.size) }
+            // HR Zone Distribution Mini-Pills
+            val hrValues = remember(validHrList) { validHrList.mapNotNull { it.heartRate } }
+            val zone1 = remember(hrValues) { if (hrValues.isEmpty()) 0 else (hrValues.count { it in 48..59 } * 100 / hrValues.size) }
+            val zone2 = remember(hrValues) { if (hrValues.isEmpty()) 0 else (hrValues.count { it in 60..99 } * 100 / hrValues.size) }
+            val zone3 = remember(hrValues) { if (hrValues.isEmpty()) 0 else (hrValues.count { it in 100..139 } * 100 / hrValues.size) }
+            val zone4 = remember(hrValues) { if (hrValues.isEmpty()) 0 else (hrValues.count { it >= 140 } * 100 / hrValues.size) }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -312,156 +345,35 @@ fun HeartRateCard(
                 ZoneIndicator(label = "Peak", color = CrimsonStrain, percent = "$zone4%", modifier = Modifier.weight(1f))
             }
 
-            // Expandable Exact Timestamps Section
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.75.dp)
-                        .background(TextMuted.copy(alpha = 0.2f))
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Peak & Minimum Heart Rate Callouts with Exact Timestamps (Huawei Health style)
+            // Bottom Affordance: Breadcrumbs / Details link
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                    .border(0.75.dp, CrimsonStrain.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
-                            .padding(10.dp)
-                    ) {
-                        Text(text = "LOWEST HEART RATE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "${minBpm ?: 52} bpm", fontSize = 16.sp, fontWeight = FontWeight.Black, color = NeonCyanRing)
-                        Text(text = "04:21 AM • Sleep Nadir", fontSize = 9.sp, color = TextSecondary)
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(ObsidianHighlight, RoundedCornerShape(12.dp))
-                            .padding(10.dp)
-                    ) {
-                        Text(text = "PEAK HEART RATE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "${maxBpm ?: 124} bpm", fontSize = 16.sp, fontWeight = FontWeight.Black, color = CrimsonStrain)
-                        Text(text = "07:42 AM • Active Cadence", fontSize = 9.sp, color = TextSecondary)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Huawei Health 5 Cardiac Zones Breakdown
-                Text(
-                    text = "CARDIAC TRAINING ZONES BREAKDOWN",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.sp,
-                    color = CrimsonStrain
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ObsidianHighlight, RoundedCornerShape(14.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    DetailedZoneRow(name = "Zone 5 • Extreme / Maximum (>160 bpm)", duration = "0m (0%)", color = CrimsonStrain, pct = 0f)
-                    DetailedZoneRow(name = "Zone 4 • Anaerobic / Threshold (140–160 bpm)", duration = "8m (2%)", color = AmberStrain, pct = 0.02f)
-                    DetailedZoneRow(name = "Zone 3 • Aerobic Endurance (120–140 bpm)", duration = "28m (6%)", color = HotMagentaRing, pct = 0.06f)
-                    DetailedZoneRow(name = "Zone 2 • Fat Burn / Aerobic Base (100–120 bpm)", duration = "1h 24m (18%)", color = ElectricTealRing, pct = 0.18f)
-                    DetailedZoneRow(name = "Zone 1 • Warm-up / Rest (<100 bpm)", duration = "5h 42m (74%)", color = NeonCyanRing, pct = 0.74f)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "CHRONOLOGICAL TELEMETRY LOG",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.sp,
-                    color = TextSecondary
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val sortedSamples = remember(validHrList) { validHrList.sortedByDescending { it.timestamp } }
-                if (sortedSamples.isEmpty()) {
                     Text(
-                        text = "Syncing live readings from band...",
-                        fontSize = 12.sp,
-                        color = TextMuted
+                        text = "EXPLORE 24H INTERACTIVE TELEMETRY & SPIKES",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.8.sp,
+                        color = CrimsonStrain
                     )
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 240.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        for (sample in sortedSamples.take(50)) {
-                            val timeStr = SimpleDateFormat("hh:mm:ss a", Locale.getDefault()).format(Date(sample.timestamp * 1000L))
-                            val hr = sample.heartRate ?: 0
-                            val (zoneLabel, zoneColor) = when {
-                                hr < 60 -> "Resting Baseline" to NeonCyanRing
-                                hr < 100 -> "Aerobic Base" to ElectricTealRing
-                                hr < 140 -> "Cardio Endurance" to HotMagentaRing
-                                else -> "Peak Anaerobic" to CrimsonStrain
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(ObsidianHighlight.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        text = timeStr,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = zoneLabel,
-                                        fontSize = 10.sp,
-                                        color = zoneColor,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(
-                                        text = "$hr",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "bpm",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = zoneColor,
-                                        modifier = Modifier.padding(bottom = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = CrimsonStrain,
+                        modifier = Modifier.size(12.dp)
+                    )
                 }
             }
         }
@@ -492,45 +404,5 @@ private fun ZoneIndicator(
         }
         Spacer(modifier = Modifier.height(2.dp))
         Text(text = percent, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-    }
-}
-
-@Composable
-private fun DetailedZoneRow(
-    name: String,
-    duration: String,
-    color: Color,
-    pct: Float
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(color, CircleShape)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = name, fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
-            }
-            Text(text = duration, fontSize = 11.sp, color = color, fontWeight = FontWeight.Bold)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .background(Color(0xFF1E222D), RoundedCornerShape(3.dp))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = pct.coerceIn(0f, 1f))
-                    .height(6.dp)
-                    .background(color, RoundedCornerShape(3.dp))
-            )
-        }
     }
 }

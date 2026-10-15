@@ -281,7 +281,9 @@ fun MainAppContent(
     val historicalHr by bleManager.protocolHandler.fitnessDataFlow
         .map { list -> list.lastOrNull { it.heartRate != null }?.heartRate }
         .collectAsState(initial = null)
-    val currentPulse = liveRealtimeHr ?: historicalHr ?: todaySamples.lastOrNull { it.heartRate != null }?.heartRate
+    val currentPulse = liveRealtimeHr?.takeIf { it in 48..220 }
+        ?: historicalHr?.takeIf { it in 48..220 }
+        ?: todaySamples.lastOrNull { it.heartRate != null && it.heartRate in 48..220 }?.heartRate
 
     val liveBattery by bleManager.protocolHandler.batteryLevel.collectAsState()
     val effectiveBattery = liveBattery ?: primaryDevice?.batteryLevel
@@ -291,6 +293,9 @@ fun MainAppContent(
     LaunchedEffect(devId) {
         // Clear previously auto-injected mock sleep sessions so only real user sleep from band is displayed
         sleepRepo.clearSessions(devId)
+
+        // Purge any corrupted optical sensor artifacts (< 48 or > 220 bpm) from database
+        sampleRepo.purgeInvalidHeartRates()
 
         // Restore stored credentials so encrypted commands (watchfaces, weather, HR mode) work immediately
         val (authKey, secretKey) = deviceRepo.getDeviceCredentials(devId)
@@ -305,7 +310,7 @@ fun MainAppContent(
     LaunchedEffect(todaySamples) {
         if (todaySamples.isNotEmpty()) {
             val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
-            val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 35..220 }
+            val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 48..220 }
             val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
             val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
             val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null
@@ -570,6 +575,11 @@ fun MainAppContent(
                     onTabSelected = { targetPage ->
                         coroutineScope.launch {
                             pagerState.animateScrollToPage(targetPage)
+                        }
+                    },
+                    onTabScrubbed = { targetPage ->
+                        coroutineScope.launch {
+                            pagerState.scrollToPage(targetPage)
                         }
                     }
                 )
