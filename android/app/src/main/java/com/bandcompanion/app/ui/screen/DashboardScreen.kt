@@ -327,11 +327,16 @@ fun DashboardScreen(
         )
 
         // 5. Blood Oxygenation (SpO2)
+        val realSpo2s = remember(hrSamples) { hrSamples.mapNotNull { it.spo2 } }
+        val latestSpotSpo2 = remember(realSpo2s) { realSpo2s.lastOrNull() }
+        val minSpo2 = remember(realSpo2s) { realSpo2s.minOrNull() }
+        val maxSpo2 = remember(realSpo2s) { realSpo2s.maxOrNull() }
+
         DashboardSectionHeader(title = "BLOOD OXYGENATION")
         OxygenationCard(
-            currentSpo2 = todaySummary?.avgSpo2 ?: 98f,
-            minSpo2 = 96f,
-            maxSpo2 = 99f
+            currentSpo2 = latestSpotSpo2 ?: todaySummary?.avgSpo2 ?: 98f,
+            minSpo2 = minSpo2 ?: todaySummary?.avgSpo2?.minus(1.5f) ?: 95f,
+            maxSpo2 = maxSpo2 ?: todaySummary?.avgSpo2?.plus(1.0f) ?: 99f
         )
 
         // 6. Emotional Wellbeing & Autonomic Stress

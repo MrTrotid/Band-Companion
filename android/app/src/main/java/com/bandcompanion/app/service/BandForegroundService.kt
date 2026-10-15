@@ -48,7 +48,7 @@ class BandForegroundService : Service() {
         const val ACTION_STOP = "com.bandcompanion.app.ACTION_STOP"
         const val ACTION_SYNC_NOW = "com.bandcompanion.app.ACTION_SYNC_NOW"
 
-        const val SYNC_INTERVAL_MS = 180_000L // 3 minutes autonomous sync
+        const val SYNC_INTERVAL_MS = 60_000L // 1 minute autonomous background sync
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
@@ -123,21 +123,11 @@ class BandForegroundService : Service() {
                         val mac = primary?.macAddress ?: return@collectLatest
                         val (authKey, _) = deviceRepo.getDeviceCredentials(mac)
 
-                        if (bleManager.protocolHandler.authState.value == BandProtocolHandler.AuthState.AUTHENTICATED) {
-                            Log.i("BandForegroundService", "Already authenticated, enabling passive sensors and starting 3-min sync.")
-                            bleManager.protocolHandler.enablePassiveHealthSettings()
-                            updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 92}%")
-                            startKeepaliveLoop()
-                            triggerDataSync()
-                            return@collectLatest
-                        }
-
-                        updateNotification("Authenticating...")
-                        // Perform handshake
+                        updateNotification("Connecting securely...")
+                        Log.i("BandForegroundService", "SERVICES_DISCOVERED: Authenticating with band at $mac...")
                         val success = bleManager.protocolHandler.authenticateHandshake(storedAuthKeyHex = authKey)
 
                         if (success) {
-                            // Persist any updated keys (e.g. if opCode=1 was completed or keys refreshed)
                             val newAuth = bleManager.protocolHandler.cachedAuthKey?.let { HiChain3Crypto.bytesToHex(it) }
                             val newSec = bleManager.protocolHandler.cachedSecretKey?.let { HiChain3Crypto.bytesToHex(it) }
                             if (newAuth != null && newSec != null) {
@@ -147,7 +137,9 @@ class BandForegroundService : Service() {
 
                             bleManager.protocolHandler.executePostAuthBootstrap()
                             bleManager.protocolHandler.enablePassiveHealthSettings()
-                            updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 92}%")
+                            // Keep live heart rate streaming in background
+                            bleManager.protocolHandler.openRealtimeHeartRateStream(3)
+                            updateNotification("Connected • Battery ${bleManager.protocolHandler.batteryLevel.value ?: 85}%")
                             startKeepaliveLoop()
                             triggerDataSync()
                         } else {
@@ -196,10 +188,27 @@ class BandForegroundService : Service() {
     private fun startKeepaliveLoop() {
         keepaliveJob?.cancel()
         keepaliveJob = serviceScope.launch {
-            while (true) {
+            while (isActive) {
                 try {
+                    val primary = deviceRepo.getPrimaryDevice()
+                    val devId = primary?.macAddress ?: "C4:16:88:8D:04:EF"
+                    val (authKey, _) = deviceRepo.getDeviceCredentials(devId)
+
+                    // Verify authentication state; if session was invalidated, re-authenticate immediately
+                    if (bleManager.protocolHandler.authState.value != BandProtocolHandler.AuthState.AUTHENTICATED) {
+                        Log.i("BandForegroundService", "keepaliveLoop: authState is IDLE, performing fast re-auth...")
+                        val reauthSuccess = bleManager.protocolHandler.authenticateHandshake(storedAuthKeyHex = authKey)
+                        if (!reauthSuccess) {
+                            Log.w("BandForegroundService", "keepaliveLoop: re-auth failed, retrying on next cycle...")
+                            delay(10000L)
+                            continue
+                        }
+                    }
+
+                    // Keep live continuous HR streaming active
+                    bleManager.protocolHandler.openRealtimeHeartRateStream(3)
+
                     val battery = bleManager.protocolHandler.queryBattery()
-                    val devId = deviceRepo.getPrimaryDevice()?.macAddress ?: "C4:16:88:8D:04:EF"
                     val now = System.currentTimeMillis()
                     val batVal = battery ?: bleManager.protocolHandler.batteryLevel.value
                     if (batVal != null) {
@@ -222,15 +231,16 @@ class BandForegroundService : Service() {
 
     private suspend fun triggerDataSync() {
         val now = System.currentTimeMillis()
-        val dayAgo = now - (24 * 3600 * 1000L)
-        val samples = bleManager.protocolHandler.queryFitnessHistory(dayAgo, now)
+        // Rolling 48-hour window guarantees overnight sleep and past 2 days of samples are retrieved
+        val twoDaysAgo = now - (48 * 3600 * 1000L)
+        val samples = bleManager.protocolHandler.queryFitnessHistory(twoDaysAgo, now)
         val primary = deviceRepo.getPrimaryDevice()
         val devId = primary?.macAddress ?: "C4:16:88:8D:04:EF"
         if (samples.isNotEmpty()) {
             sampleRepo.saveSamples(devId, samples)
         }
 
-        // Aggregate today's metrics
+        // Aggregate today's metrics from persisted per-minute sample records
         val cal = Calendar.getInstance()
         cal.set(Calendar.HOUR_OF_DAY, 0)
         cal.set(Calendar.MINUTE, 0)
@@ -241,40 +251,55 @@ class BandForegroundService : Service() {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
 
         val todaySamples = sampleRepo.getSamplesBetweenSync(devId, todayMidnightSec, nowSec)
-        if (todaySamples.isNotEmpty()) {
-            val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
-            val hrSamples = todaySamples.mapNotNull { it.heartRate }
-            val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
-            val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
-            val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null
+        // Steps: sum all per-minute step increments from today's samples
+        val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
 
-            // Active minutes: samples where steps >= 40
-            val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 40 }
-            // Calories: approx 0.045 kcal per step + active energy
-            val calories = (totalSteps * 0.045f).toInt()
-            // Stand hours: distinct hours in today with >= 60 steps
-            val standHours = todaySamples.filter { (it.steps ?: 0) >= 60 }
-                .map {
-                    val c = Calendar.getInstance().apply { timeInMillis = it.timestamp * 1000L }
-                    c.get(Calendar.HOUR_OF_DAY)
-                }.distinct().size
+        // Calories: small calories (cal) scaled by 1000; divide by 1000 to get dietary kcal
+        val caloriesFromSamples = (todaySamples.sumOf { it.calories ?: 0 }) / 1000
+        val calories = if (caloriesFromSamples > 0) caloriesFromSamples else (totalSteps * 0.045f).toInt()
 
-            val spo2Samples = todaySamples.mapNotNull { it.spo2 }
-            val avgSpo2 = if (spo2Samples.isNotEmpty()) spo2Samples.average().toFloat() else null
+        // Active minutes: minutes with >= 30 steps or HR >= 95 bpm
+        val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 30 || (it.heartRate ?: 0) >= 95 }
 
-            val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
-            val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
-                totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
-                activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
-                caloriesBurned = if (calories > 0) calories else existing?.caloriesBurned ?: 0,
-                standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
-                restingHeartRate = restingHr ?: existing?.restingHeartRate,
-                minHeartRate = minHr ?: existing?.minHeartRate,
-                maxHeartRate = maxHr ?: existing?.maxHeartRate,
-                avgSpo2 = avgSpo2 ?: existing?.avgSpo2
-            )
-            summaryRepo.saveSummary(devId, updatedSummary)
+        // Stand hours: count distinct hours where user moved (>= 30 steps in that hour)
+        val standHours = todaySamples.groupBy {
+            val c = Calendar.getInstance().apply { timeInMillis = it.timestamp * 1000L }
+            c.get(Calendar.HOUR_OF_DAY)
+        }.count { (_, hourSamples) ->
+            hourSamples.sumOf { it.steps ?: 0 } >= 30
         }
+
+        val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 35..220 }
+        val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
+        val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
+        val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null
+
+        val spo2Samples = todaySamples.mapNotNull { it.spo2 }.filter { it in 70f..100f }
+        val avgSpo2 = if (spo2Samples.isNotEmpty()) spo2Samples.average().toFloat() else null
+
+        // Autonomic stress score (0-100): Baevsky-inspired calculation based on resting HR and elevation
+        val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
+        val stressScore = if (restingHr != null && restingHr in 35..110) {
+            val recentHrs = hrSamples.takeLast(10)
+            val recentAvgHr = if (recentHrs.isNotEmpty()) recentHrs.average().toFloat() else restingHr.toFloat()
+            val hrElevation = (recentAvgHr - restingHr).coerceAtLeast(0f)
+            (28f + (hrElevation * 1.35f)).toInt().coerceIn(18, 88)
+        } else {
+            existing?.stressScore ?: 34
+        }
+
+        val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
+            totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
+            activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
+            caloriesBurned = if (calories > 0) calories else existing?.caloriesBurned ?: 0,
+            standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
+            restingHeartRate = restingHr ?: existing?.restingHeartRate,
+            minHeartRate = minHr ?: existing?.minHeartRate,
+            maxHeartRate = maxHr ?: existing?.maxHeartRate,
+            avgSpo2 = avgSpo2 ?: existing?.avgSpo2,
+            stressScore = stressScore
+        )
+        summaryRepo.saveSummary(devId, updatedSummary)
     }
 
     private fun createNotificationChannel() {

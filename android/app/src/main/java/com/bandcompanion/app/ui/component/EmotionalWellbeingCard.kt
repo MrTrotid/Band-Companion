@@ -52,11 +52,11 @@ fun EmotionalWellbeingCard(
     modifier: Modifier = Modifier
 ) {
     val displayStress = stressScore ?: 35
-    val (stressLabel, stressColor) = when {
-        displayStress < 30 -> "Relaxed" to RelaxedGreen
-        displayStress < 60 -> "Normal Balance" to NormalBlue
-        displayStress < 80 -> "Medium Stress" to MediumOrange
-        else -> "High Stress" to HighRed
+    val (valenceLabel, valenceDescription, stressColor) = when {
+        displayStress < 30 -> Triple("Pleasant • Relaxed", "Calm parasympathetic recovery & low mental fatigue", RelaxedGreen)
+        displayStress < 60 -> Triple("Pleasant • Balanced", "Normal productive state & stable autonomic tone", NormalBlue)
+        displayStress < 80 -> Triple("Unpleasant • Elevated", "Mild tension detected; sympathetic dominance", MediumOrange)
+        else -> Triple("Very Unpleasant • High Stress", "Acute autonomic arousal; 3-min breathing recommended", HighRed)
     }
 
     Card(
@@ -90,12 +90,18 @@ fun EmotionalWellbeingCard(
                     )
                 }
 
-                Text(
-                    text = stressLabel,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = stressColor
-                )
+                Box(
+                    modifier = Modifier
+                        .background(stressColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = valenceLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = stressColor
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -139,6 +145,14 @@ fun EmotionalWellbeingCard(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = valenceDescription,
+                fontSize = 11.sp,
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 

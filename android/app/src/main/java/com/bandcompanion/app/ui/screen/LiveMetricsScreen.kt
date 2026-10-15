@@ -79,10 +79,11 @@ import kotlin.math.sin
  */
 @Composable
 fun LiveMetricsScreen(
-    latestSample: SampleMetric?
+    currentPulseBpm: Int? = null,
+    latestSample: SampleMetric? = null
 ) {
     val scrollState = rememberScrollState()
-    val hr = latestSample?.heartRate ?: 72
+    val hr = currentPulseBpm ?: latestSample?.heartRate ?: 75
     val pulseDuration = (60_000 / hr.coerceIn(40, 200)).coerceIn(300, 1500)
 
     val infiniteTransition = rememberInfiniteTransition(label = "liveSensors")

@@ -5,6 +5,8 @@ import com.bandcompanion.core.database.entity.SleepSessionEntity
 import com.bandcompanion.core.database.entity.SleepStageIntervalEntity
 import com.bandcompanion.core.model.SleepSession
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 class SleepRepository(private val sleepDao: SleepDao) {
@@ -23,8 +25,14 @@ class SleepRepository(private val sleepDao: SleepDao) {
     }
 
     fun getLatestSleepSession(deviceId: String): Flow<SleepSession?> {
-        return sleepDao.getLatestSleepSession(deviceId).map { entity ->
-            entity?.toDomainModel()
+        return sleepDao.getLatestSleepSession(deviceId).flatMapLatest { entity ->
+            if (entity == null) {
+                flowOf(null)
+            } else {
+                sleepDao.getStagesForSession(entity.sessionId).map { stageEntities ->
+                    entity.toDomainModel().copy(stages = stageEntities.map { it.toDomainModel() })
+                }
+            }
         }
     }
 

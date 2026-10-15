@@ -181,6 +181,7 @@ class BleConnectionManager(
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
+        protocolHandler.resetAuthState()
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
@@ -240,6 +241,7 @@ class BleConnectionManager(
                     }
                     writeChar = null
                     notifyChar = null
+                    protocolHandler.resetAuthState()
                     _connectionState.value = ConnectionState.DISCONNECTED
                 }
             }

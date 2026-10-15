@@ -270,9 +270,11 @@ fun MainAppContent(
     val latestMood by moodRepo.getLatestMood(devId).collectAsState(initial = null)
     val latestWeight by weightRepo.getLatestEntry().collectAsState(initial = null)
     val todaySamples by sampleRepo.getSamplesBetween(devId, todayMidnightSec, nowSec).collectAsState(initial = emptyList())
-    val currentPulse by bleManager.protocolHandler.fitnessDataFlow
+    val liveRealtimeHr by bleManager.protocolHandler.liveHeartRateFlow.collectAsState()
+    val historicalHr by bleManager.protocolHandler.fitnessDataFlow
         .map { list -> list.lastOrNull { it.heartRate != null }?.heartRate }
         .collectAsState(initial = null)
+    val currentPulse = liveRealtimeHr ?: historicalHr ?: todaySamples.lastOrNull { it.heartRate != null }?.heartRate
 
     val liveBattery by bleManager.protocolHandler.batteryLevel.collectAsState()
     val effectiveBattery = liveBattery ?: primaryDevice?.batteryLevel
@@ -280,21 +282,40 @@ fun MainAppContent(
     LaunchedEffect(todaySamples) {
         if (todaySamples.isNotEmpty()) {
             val totalSteps = todaySamples.sumOf { it.steps ?: 0 }
-            val hrSamples = todaySamples.mapNotNull { it.heartRate }
+            val hrSamples = todaySamples.mapNotNull { it.heartRate }.filter { it in 35..220 }
             val restingHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
             val minHr = if (hrSamples.isNotEmpty()) hrSamples.minOrNull() else null
             val maxHr = if (hrSamples.isNotEmpty()) hrSamples.maxOrNull() else null
-            val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 40 }
-            val calories = (totalSteps * 0.045f).toInt()
-            val standHours = todaySamples.filter { (it.steps ?: 0) >= 60 }
-                .map {
-                    val c = Calendar.getInstance().apply { timeInMillis = it.timestamp * 1000L }
-                    c.get(Calendar.HOUR_OF_DAY)
-                }.distinct().size
-            val spo2List = todaySamples.mapNotNull { it.spo2 }
+
+            // Calories: real per-sample calories divided by 1000
+            val caloriesFromSamples = (todaySamples.sumOf { it.calories ?: 0 }) / 1000
+            val calories = if (caloriesFromSamples > 0) caloriesFromSamples else (totalSteps * 0.045f).toInt()
+
+            // Active minutes: minutes with >= 30 steps or HR >= 95 bpm
+            val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 30 || (it.heartRate ?: 0) >= 95 }
+
+            // Stand hours: distinct hours where user accumulated >= 30 steps
+            val standHours = todaySamples.groupBy {
+                val c = Calendar.getInstance().apply { timeInMillis = it.timestamp * 1000L }
+                c.get(Calendar.HOUR_OF_DAY)
+            }.count { (_, hourSamples) ->
+                hourSamples.sumOf { it.steps ?: 0 } >= 30
+            }
+
+            val spo2List = todaySamples.mapNotNull { it.spo2 }.filter { it in 70f..100f }
             val avgSpo2 = if (spo2List.isNotEmpty()) spo2List.average().toFloat() else null
 
+            // Autonomic stress score (0-100) based on resting HR and sympatovagal tone
             val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
+            val stressScore = if (restingHr != null && restingHr in 35..110) {
+                val recentHrs = hrSamples.takeLast(10)
+                val recentAvgHr = if (recentHrs.isNotEmpty()) recentHrs.average().toFloat() else restingHr.toFloat()
+                val hrElevation = (recentAvgHr - restingHr).coerceAtLeast(0f)
+                (28f + (hrElevation * 1.35f)).toInt().coerceIn(18, 88)
+            } else {
+                existing?.stressScore ?: 34
+            }
+
             val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
                 totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
                 activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
@@ -303,7 +324,8 @@ fun MainAppContent(
                 restingHeartRate = restingHr ?: existing?.restingHeartRate,
                 minHeartRate = minHr ?: existing?.minHeartRate,
                 maxHeartRate = maxHr ?: existing?.maxHeartRate,
-                avgSpo2 = avgSpo2 ?: existing?.avgSpo2
+                avgSpo2 = avgSpo2 ?: existing?.avgSpo2,
+                stressScore = stressScore
             )
             summaryRepo.saveSummary(devId, updatedSummary)
         }
@@ -315,6 +337,8 @@ fun MainAppContent(
             if (bat != null) {
                 deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
             }
+            // Open real-time HR stream so current BPM updates continuously
+            bleManager.protocolHandler.openRealtimeHeartRateStream(3)
         }
     }
 
@@ -653,7 +677,8 @@ fun MainAppContent(
                             session = latestSleepSession
                         )
                         NavigationTab.LIVE -> LiveMetricsScreen(
-                            latestSample = null
+                            currentPulseBpm = currentPulse,
+                            latestSample = todaySamples.lastOrNull { it.heartRate != null || it.spo2 != null || it.steps != null }
                         )
                         NavigationTab.TRENDS -> TrendsScreen(
                             summaries = recentSummaries

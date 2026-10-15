@@ -101,6 +101,7 @@ class BandProtocolHandler(
         // RRI & Stress Testing Services
         const val SVC_HR_RRI_TEST = 0x19
         const val CMD_HR_RRI_OPEN_CLOSE = 0x01
+        const val CMD_HR_REALTIME_DATA = 0x03
         const val CMD_HR_RRI_DATA = 0x05
 
         const val SVC_STRESS = 0x20
@@ -142,6 +143,9 @@ class BandProtocolHandler(
 
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
+
+    private val _liveHeartRateFlow = MutableStateFlow<Int?>(null)
+    val liveHeartRateFlow: StateFlow<Int?> = _liveHeartRateFlow.asStateFlow()
 
     private val _fitnessDataFlow = MutableSharedFlow<List<SampleMetric>>()
     val fitnessDataFlow = _fitnessDataFlow.asSharedFlow()
@@ -226,6 +230,28 @@ class BandProtocolHandler(
             packet.serviceId == SVC_DATASYNC && packet.commandId == CMD_DATASYNC_CONFIG -> {
                 scope.launch {
                     handleDataSyncConfigRequest(packet.tlvs)
+                }
+            }
+            packet.serviceId == SVC_HR_RRI_TEST && packet.commandId == CMD_HR_REALTIME_DATA -> {
+                try {
+                    val decrypted = decryptTransactionTlvs(packet.tlvs)
+                    val container = decrypted[0x01] ?: decrypted[0x81]
+                    if (container != null) {
+                        val items = VarIntTlv.decodeItems(container)
+                        for ((tag, payload) in items) {
+                            if (tag == 0x02 || tag == 0x82) {
+                                val item = VarIntTlv.decodeAll(payload)
+                                val hr = item[0x03]?.let { bytes ->
+                                    if (bytes.isNotEmpty()) bytes[0].toInt() and 0xFF else null
+                                }
+                                if (hr != null && hr in 35..220) {
+                                    _liveHeartRateFlow.value = hr
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse realtime HR packet: ${e.message}")
                 }
             }
         }
@@ -776,6 +802,17 @@ class BandProtocolHandler(
     }
 
     /**
+     * Resets authentication state on physical BLE disconnection or session invalidation.
+     */
+    fun resetAuthState() {
+        Log.i(TAG, "resetAuthState: Invalidating session credentials and resetting auth state to IDLE.")
+        _authState.value = AuthState.IDLE
+        sessionKey = null
+        cachedSecretKey = null
+        serverNonce = null
+    }
+
+    /**
      * Unified entry point for initial pairing (with watch checkmark) or fast reconnect.
      * When forceFirstAuth is true (e.g. from PairingScreen), clears cached credentials and
      * mandates opCode=1 so the watch displays the on-screen checkmark prompt.
@@ -880,7 +917,23 @@ class BandProtocolHandler(
     ): Map<Int, ByteArray>? {
         val encryptedPayload = encryptTransactionTlv(plainPayload)
         val resp = transact(serviceId, commandId, encryptedPayload, timeoutMs) ?: return null
-        return decryptTransactionTlvs(resp.tlvs)
+        val decrypted = decryptTransactionTlvs(resp.tlvs)
+
+        // Detect Huawei LPv2 unauthorized/session expired error (0x000186A4)
+        decrypted[0x7F]?.let { statusBytes ->
+            if (statusBytes.size >= 4) {
+                val code = ((statusBytes[0].toInt() and 0xFF) shl 24) or
+                        ((statusBytes[1].toInt() and 0xFF) shl 16) or
+                        ((statusBytes[2].toInt() and 0xFF) shl 8) or
+                        (statusBytes[3].toInt() and 0xFF)
+                if (code == 0x000186A4) {
+                    Log.w(TAG, "transactEncrypted: Received 0x000186A4 (UNAUTHORIZED) on svc=$serviceId cmd=$commandId! Resetting auth state.")
+                    resetAuthState()
+                }
+            }
+        }
+
+        return decrypted
     }
 
     /**
@@ -1332,16 +1385,9 @@ class BandProtocolHandler(
             }
             if (sleepCount <= 0) return
 
-            var totalDeep = 0
-            var totalLight = 0
-            var totalRem = 0
-            var totalAwake = 0
-            var totalNap = 0
-            var earliestStart = Long.MAX_VALUE
-            var latestEnd = 0L
             val stageIntervals = mutableListOf<SleepStageInterval>()
 
-            for (idx in 0 until sleepCount.coerceAtMost(30)) {
+            for (idx in 0 until sleepCount.coerceAtMost(40)) {
                 val idxPayload = VarIntTlv.encode(
                     0x81,
                     VarIntTlv.encode(0x02, byteArrayOf(((idx ushr 8) and 0xFF).toByte(), (idx and 0xFF).toByte()))
@@ -1361,44 +1407,94 @@ class BandProtocolHandler(
                             ((stamp[2].toLong() and 0xFF) shl 8) or
                             (stamp[3].toLong() and 0xFF)
                     val durationMin = ((stamp[4].toInt() and 0xFF) shl 8) or (stamp[5].toInt() and 0xFF)
-
-                    earliestStart = minOf(earliestStart, start)
-                    latestEnd = maxOf(latestEnd, start + (durationMin * 60L))
+                    if (durationMin <= 0) continue
 
                     val stageType = SleepStageType.fromRawCode(rawStage)
                     stageIntervals.add(
                         SleepStageInterval(
                             stage = stageType,
                             startTimestamp = start,
-                            endTimestamp = start + (durationMin * 60L)
+                            endTimestamp = start + (durationMin * 60L),
+                            durationSeconds = durationMin * 60
                         )
                     )
-
-                    when (stageType) {
-                        SleepStageType.DEEP -> totalDeep += durationMin
-                        SleepStageType.LIGHT -> totalLight += durationMin
-                        SleepStageType.REM -> totalRem += durationMin
-                        SleepStageType.AWAKE -> totalAwake += durationMin
-                        SleepStageType.NAP -> totalNap += durationMin
-                    }
                 }
             }
 
-            val totalDuration = totalDeep + totalLight + totalRem + totalNap
-            if (totalDuration > 0 && earliestStart < Long.MAX_VALUE) {
-                val session = SleepSession(
-                    sessionId = earliestStart.toString(),
-                    startTimestamp = earliestStart * 1000L,
-                    endTimestamp = latestEnd * 1000L,
-                    durationMinutes = totalDuration + totalAwake,
-                    deepSleepMinutes = totalDeep,
-                    lightSleepMinutes = totalLight,
-                    remSleepMinutes = totalRem,
-                    awakeMinutes = totalAwake,
-                    sleepScore = (totalDuration * 100 / 480).coerceIn(45, 98),
-                    stages = stageIntervals
-                )
-                _sleepDataFlow.emit(session)
+            if (stageIntervals.isEmpty()) return
+
+            // Sort all intervals chronologically
+            val sortedIntervals = stageIntervals.sortedBy { it.startTimestamp }
+
+            // Cluster into discrete sessions: any gap > 90 minutes (5400s) begins a new session
+            val clusters = mutableListOf<MutableList<SleepStageInterval>>()
+            var currentCluster = mutableListOf<SleepStageInterval>()
+
+            for (interval in sortedIntervals) {
+                if (currentCluster.isEmpty()) {
+                    currentCluster.add(interval)
+                } else {
+                    val lastEnd = currentCluster.last().endTimestamp
+                    if (interval.startTimestamp - lastEnd > 5400L) {
+                        clusters.add(currentCluster)
+                        currentCluster = mutableListOf(interval)
+                    } else {
+                        currentCluster.add(interval)
+                    }
+                }
+            }
+            if (currentCluster.isNotEmpty()) {
+                clusters.add(currentCluster)
+            }
+
+            // Emit each discrete sleep session
+            for (cluster in clusters) {
+                var deep = 0
+                var light = 0
+                var rem = 0
+                var awake = 0
+                var nap = 0
+
+                for (interval in cluster) {
+                    val durationMin = interval.durationSeconds / 60
+                    when (interval.stage) {
+                        SleepStageType.DEEP -> deep += durationMin
+                        SleepStageType.LIGHT -> light += durationMin
+                        SleepStageType.REM -> rem += durationMin
+                        SleepStageType.AWAKE -> awake += durationMin
+                        SleepStageType.NAP -> nap += durationMin
+                    }
+                }
+
+                val totalSleep = deep + light + rem + nap
+                if (totalSleep >= 10) {
+                    val sessionStart = cluster.first().startTimestamp
+                    val sessionEnd = cluster.last().endTimestamp
+                    val totalDuration = totalSleep + awake
+
+                    val score = if (totalSleep < 180) {
+                        (totalSleep * 100 / 180).coerceIn(40, 85)
+                    } else {
+                        (totalSleep * 100 / 480).coerceIn(55, 98)
+                    }
+
+                    val session = SleepSession(
+                        sessionId = sessionStart.toString(),
+                        startTimestamp = sessionStart * 1000L,
+                        endTimestamp = sessionEnd * 1000L,
+                        durationMinutes = totalDuration,
+                        deepSleepMinutes = deep,
+                        lightSleepMinutes = light,
+                        remSleepMinutes = rem,
+                        awakeMinutes = awake,
+                        sleepScore = score,
+                        sleepEfficiency = if (totalDuration > 0) (totalSleep.toFloat() / totalDuration * 100f).coerceIn(50f, 99f) else 85f,
+                        latencyMinutes = 12,
+                        stages = cluster
+                    )
+                    Log.i(TAG, "querySleepHistory: Emitting discrete sleep session: start=$sessionStart end=$sessionEnd total=${totalSleep}m (Deep:${deep}m, Light:${light}m, REM:${rem}m, Awake:${awake}m, Nap:${nap}m) score=$score")
+                    _sleepDataFlow.emit(session)
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "querySleepHistory error: ${e.message}")
@@ -1585,6 +1681,59 @@ class BandProtocolHandler(
     suspend fun stopLiveStressTest(): Boolean {
         val payload = VarIntTlv.encode(0x01, byteArrayOf(0x00))
         return sendEncryptedNoWait(SVC_HR_RRI_TEST, CMD_HR_RRI_OPEN_CLOSE, payload)
+    }
+
+    /**
+     * Opens real-time continuous live heart rate streaming from the watch (SVC_HR_RRI_TEST 0x19 / CMD 0x01).
+     */
+    suspend fun openRealtimeHeartRateStream(openType: Int = 3): Boolean {
+        val payload = VarIntTlv.encode(0x01, byteArrayOf((openType and 0xFF).toByte()))
+        return sendEncryptedNoWait(SVC_HR_RRI_TEST, CMD_HR_RRI_OPEN_CLOSE, payload)
+    }
+
+    /**
+     * Closes real-time live heart rate streaming.
+     */
+    suspend fun closeRealtimeHeartRateStream(closeType: Int = 4): Boolean {
+        val payload = VarIntTlv.encode(0x01, byteArrayOf((closeType and 0xFF).toByte()))
+        return sendEncryptedNoWait(SVC_HR_RRI_TEST, CMD_HR_RRI_OPEN_CLOSE, payload)
+    }
+
+    /**
+     * Queries today's step record count from the watch (SVC_HEALTH 0x07, CMD_STEP_COUNT 0x0A).
+     * Used to determine if there are new records to fetch beyond the last sync window.
+     */
+    suspend fun queryTodayStepRecordCount(): Int {
+        return try {
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            val startSec = (cal.timeInMillis / 1000L).let { b ->
+                byteArrayOf((b ushr 24).toByte(), (b ushr 16).toByte(), (b ushr 8).toByte(), b.toByte())
+            }
+            val endSec = (System.currentTimeMillis() / 1000L).let { b ->
+                byteArrayOf((b ushr 24).toByte(), (b ushr 16).toByte(), (b ushr 8).toByte(), b.toByte())
+            }
+            val payload = VarIntTlv.encode(0x81, ByteArray(0)) +
+                    VarIntTlv.encode(0x03, startSec) +
+                    VarIntTlv.encode(0x04, endSec)
+            val resp = transactEncrypted(SVC_HEALTH, CMD_STEP_COUNT, payload, timeoutMs = 5000) ?: return -1
+            resp[0x81]?.let { container ->
+                val sub = VarIntTlv.decodeAll(container)
+                sub[0x02]?.let { b ->
+                    if (b.size >= 2) return ((b[0].toInt() and 0xFF) shl 8) or (b[1].toInt() and 0xFF)
+                }
+            }
+            resp[0x02]?.let { b ->
+                if (b.size >= 2) return ((b[0].toInt() and 0xFF) shl 8) or (b[1].toInt() and 0xFF)
+            }
+            -1
+        } catch (e: Exception) {
+            Log.w(TAG, "queryTodayStepRecordCount: ${e.message}")
+            -1
+        }
     }
 
     private fun parseHiChainJson(bytes: ByteArray?): JSONObject? {

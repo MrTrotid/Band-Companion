@@ -41,6 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.GlassDockBorder
 import com.bandcompanion.app.ui.theme.NeonTeal
@@ -94,6 +97,14 @@ fun SleepDetailScreen(
 
 @Composable
 fun SleepScoreHeaderCard(session: SleepSession?) {
+    val hasRealTimes = session != null && session.startTimestamp > 0
+    val startLocalStr = if (hasRealTimes) {
+        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.startTimestamp))
+    } else "11:30 PM"
+    val endLocalStr = if (hasRealTimes && session!!.endTimestamp > 0) {
+        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.endTimestamp))
+    } else "07:15 AM"
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,9 +148,15 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         color = TextPrimary
                     )
                     Text(
+                        text = "$startLocalStr – $endLocalStr",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
                         text = "Efficiency: ${(session?.sleepEfficiency ?: 86f).toInt()}% • Latency: ${session?.latencyMinutes ?: 13}m",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        color = TextMuted
                     )
                 }
 
@@ -150,13 +167,13 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         color = TextMuted
                     )
                     Text(
-                        text = formatMinutes(session?.totalSleepMinutes ?: 277),
+                        text = formatMinutes(session?.totalSleepMinutes ?: 76),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = ElectricCyan
                     )
                     Text(
-                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 351)}",
+                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 76)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
