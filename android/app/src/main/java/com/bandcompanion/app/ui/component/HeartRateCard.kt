@@ -1,12 +1,17 @@
 package com.bandcompanion.app.ui.component
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,21 +19,29 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -48,10 +61,14 @@ import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
 import com.bandcompanion.core.model.SampleMetric
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Whoop-styled Cardiovascular Strain & Continuous Heart Rate Card.
- * Displays live pulse, resting baseline, daily range (min/max), and continuous curve.
+ * Displays live pulse, resting baseline, daily range (min/max), continuous curve,
+ * and an expandable chronological log with exact timestamps and cardiac zones.
  */
 @Composable
 fun HeartRateCard(
@@ -62,6 +79,13 @@ fun HeartRateCard(
     hrSamples: List<SampleMetric>,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "chevronRotation"
+    )
+
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
@@ -73,8 +97,13 @@ fun HeartRateCard(
         label = "pulseScale"
     )
 
+    val validHrList = remember(hrSamples) { hrSamples.filter { it.heartRate != null } }
+
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { isExpanded = !isExpanded }
+            .animateContentSize(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard)
     ) {
@@ -105,12 +134,22 @@ fun HeartRateCard(
                     )
                 }
 
-                Text(
-                    text = if (restingBpm != null) "Resting $restingBpm bpm" else "Continuous 24/7",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = CrimsonStrain
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = if (restingBpm != null) "Resting $restingBpm bpm" else "Continuous 24/7",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = CrimsonStrain
+                    )
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Expand heart rate log",
+                        tint = TextMuted,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(chevronRotation)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -156,7 +195,7 @@ fun HeartRateCard(
             Spacer(modifier = Modifier.height(18.dp))
 
             // Continuous HR 24h Area Graph
-            val validHrList = hrSamples.mapNotNull { it.heartRate }
+            val hrValues = remember(validHrList) { validHrList.mapNotNull { it.heartRate } }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -164,17 +203,17 @@ fun HeartRateCard(
                     .background(ObsidianHighlight, RoundedCornerShape(14.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                if (validHrList.size >= 2) {
+                if (hrValues.size >= 2) {
                     Canvas(modifier = Modifier.matchParentSize()) {
-                        val minVal = (validHrList.minOrNull() ?: 50).toFloat().coerceAtLeast(40f)
-                        val maxVal = (validHrList.maxOrNull() ?: 160).toFloat().coerceAtLeast(minVal + 20f)
+                        val minVal = (hrValues.minOrNull() ?: 50).toFloat().coerceAtLeast(40f)
+                        val maxVal = (hrValues.maxOrNull() ?: 160).toFloat().coerceAtLeast(minVal + 20f)
                         val range = maxVal - minVal
 
                         val strokePath = Path()
                         val fillPath = Path()
 
-                        validHrList.forEachIndexed { index, hr ->
-                            val x = index.toFloat() / (validHrList.size - 1) * size.width
+                        hrValues.forEachIndexed { index, hr ->
+                            val x = index.toFloat() / (hrValues.size - 1) * size.width
                             val normY = 1f - ((hr - minVal) / range)
                             val y = normY * (size.height - 10f) + 5f
 
@@ -235,14 +274,111 @@ fun HeartRateCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             // HR Zone Distribution Pill
+            val zone1 = remember(hrValues) { if (hrValues.isEmpty()) 55 else (hrValues.count { it < 60 } * 100 / hrValues.size) }
+            val zone2 = remember(hrValues) { if (hrValues.isEmpty()) 28 else (hrValues.count { it in 60..99 } * 100 / hrValues.size) }
+            val zone3 = remember(hrValues) { if (hrValues.isEmpty()) 12 else (hrValues.count { it in 100..139 } * 100 / hrValues.size) }
+            val zone4 = remember(hrValues) { if (hrValues.isEmpty()) 5 else (hrValues.count { it >= 140 } * 100 / hrValues.size) }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                ZoneIndicator(label = "Rest", color = NeonCyanRing, percent = "55%", modifier = Modifier.weight(1f))
-                ZoneIndicator(label = "Fat Burn", color = ElectricTealRing, percent = "28%", modifier = Modifier.weight(1f))
-                ZoneIndicator(label = "Cardio", color = HotMagentaRing, percent = "12%", modifier = Modifier.weight(1f))
-                ZoneIndicator(label = "Peak", color = CrimsonStrain, percent = "5%", modifier = Modifier.weight(1f))
+                ZoneIndicator(label = "Rest", color = NeonCyanRing, percent = "$zone1%", modifier = Modifier.weight(1f))
+                ZoneIndicator(label = "Fat Burn", color = ElectricTealRing, percent = "$zone2%", modifier = Modifier.weight(1f))
+                ZoneIndicator(label = "Cardio", color = HotMagentaRing, percent = "$zone3%", modifier = Modifier.weight(1f))
+                ZoneIndicator(label = "Peak", color = CrimsonStrain, percent = "$zone4%", modifier = Modifier.weight(1f))
+            }
+
+            // Expandable Exact Timestamps Section
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.75.dp)
+                        .background(TextMuted.copy(alpha = 0.2f))
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "EXACT TIMESTAMPS & ZONE LOG",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp,
+                    color = CrimsonStrain
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val sortedSamples = remember(validHrList) { validHrList.sortedByDescending { it.timestamp } }
+                if (sortedSamples.isEmpty()) {
+                    Text(
+                        text = "Syncing live readings from band...",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (sample in sortedSamples.take(50)) {
+                            val timeStr = SimpleDateFormat("hh:mm:ss a", Locale.getDefault()).format(Date(sample.timestamp * 1000L))
+                            val hr = sample.heartRate ?: 0
+                            val (zoneLabel, zoneColor) = when {
+                                hr < 60 -> "Resting Baseline" to NeonCyanRing
+                                hr < 100 -> "Aerobic Base" to ElectricTealRing
+                                hr < 140 -> "Cardio Endurance" to HotMagentaRing
+                                else -> "Peak Anaerobic" to CrimsonStrain
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(ObsidianHighlight.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = timeStr,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = zoneLabel,
+                                        fontSize = 10.sp,
+                                        color = zoneColor,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = "$hr",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "bpm",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = zoneColor,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

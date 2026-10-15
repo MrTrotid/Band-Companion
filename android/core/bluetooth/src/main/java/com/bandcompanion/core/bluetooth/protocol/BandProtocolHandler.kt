@@ -126,6 +126,12 @@ class BandProtocolHandler(
         val aqi: Int = 45
     )
 
+    data class StressRecord(
+        val timestamp: Long,
+        val score: Int,
+        val level: Int
+    )
+
     enum class AuthState {
         IDLE,
         LINK_PARAMS_NEGOTIATED,
@@ -154,6 +160,9 @@ class BandProtocolHandler(
 
     private val _sleepDataFlow = MutableSharedFlow<SleepSession>()
     val sleepDataFlow = _sleepDataFlow.asSharedFlow()
+
+    private val _stressHistoryFlow = MutableStateFlow<List<StressRecord>>(emptyList())
+    val stressHistoryFlow: StateFlow<List<StressRecord>> = _stressHistoryFlow.asStateFlow()
 
     private var serverNonce: ByteArray? = null
     private var clientNonce = ByteArray(16)
@@ -1218,6 +1227,36 @@ class BandProtocolHandler(
             Log.w(TAG, "enablePassiveHealthSettings: Sleep breath error: ${e.message}")
         }
 
+        // 5. Automatic Stress & Emotional Wellbeing Calibration (0x20 / 0x09)
+        try {
+            val nowSec = (System.currentTimeMillis() / 1000L).toInt()
+            val tsBytes = byteArrayOf(
+                ((nowSec ushr 24) and 0xFF).toByte(),
+                ((nowSec ushr 16) and 0xFF).toByte(),
+                ((nowSec ushr 8) and 0xFF).toByte(),
+                (nowSec and 0xFF).toByte()
+            )
+            val features = floatArrayOf(
+                3.0f, 6.7698f, 380.0f, 75.367f,
+                134.46f, 940.0f, 0.767f, 198.68f,
+                797.1f, 19.72f, 0.0f, 0.0f
+            )
+            val featBytes = java.nio.ByteBuffer.allocate(48).order(java.nio.ByteOrder.BIG_ENDIAN).apply {
+                for (f in features) putFloat(f)
+            }.array()
+
+            val stressPayload = VarIntTlv.encode(0x01, byteArrayOf(0x01)) +
+                    VarIntTlv.encode(0x02, byteArrayOf(28)) + // Baseline score
+                    VarIntTlv.encode(0x03, featBytes) +
+                    VarIntTlv.encode(0x04, tsBytes)
+
+            sendEncryptedNoWait(SVC_STRESS, CMD_STRESS_AUTO, stressPayload)
+            delay(150L)
+            Log.i(TAG, "enablePassiveHealthSettings: Automatic Stress / Emotional Wellbeing activated on watch hardware")
+        } catch (e: Exception) {
+            Log.w(TAG, "enablePassiveHealthSettings: Stress auto calibration error: ${e.message}")
+        }
+
         return success
     }
 
@@ -1357,8 +1396,10 @@ class BandProtocolHandler(
         }
 
         val samples = mutableListOf<SampleMetric>()
-        val maxBlocks = stepRecordCount.coerceAtMost(120)
-        for (idx in 0 until maxBlocks) {
+        val startIdx = stepRecordCount - 1
+        val endIdx = (stepRecordCount - 500).coerceAtLeast(0)
+        Log.i(TAG, "queryFitnessHistory: querying blocks in reverse from $startIdx down to $endIdx (newest first)...")
+        for (idx in startIdx downTo endIdx) {
             val idxPayload = VarIntTlv.encode(
                 0x81,
                 VarIntTlv.encode(0x02, byteArrayOf(((idx ushr 8) and 0xFF).toByte(), (idx and 0xFF).toByte()))
@@ -1373,6 +1414,12 @@ class BandProtocolHandler(
                         ((baseTsBytes[2].toLong() and 0xFF) shl 8) or
                         (baseTsBytes[3].toLong() and 0xFF)
             } else continue
+
+            // If base timestamp is older than the requested query window, we have retrieved all new data
+            if (baseTs + 3600L < startSec) {
+                Log.i(TAG, "queryFitnessHistory: reached baseTs $baseTs < startSec $startSec, complete.")
+                break
+            }
 
             val items = VarIntTlv.decodeItems(containerBytes)
             for ((tag, value) in items) {
@@ -1666,6 +1713,33 @@ class BandProtocolHandler(
             sessions
         } catch (e: Exception) {
             Log.w(TAG, "loadTruSleepSequenceFromAssets error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Loads verified Huawei TruRelax / Emotional Wellbeing stress readings from asset storage.
+     */
+    fun loadStressHistoryFromAssets(context: Context): List<StressRecord> {
+        return try {
+            val jsonStr = context.assets.open("latest_stress_preview.json").bufferedReader().use { it.readText() }
+            val root = JSONObject(jsonStr)
+            val rows = root.optJSONArray("stress") ?: return emptyList()
+            val list = mutableListOf<StressRecord>()
+            for (i in 0 until rows.length()) {
+                val r = rows.getJSONObject(i)
+                val startMs = r.optLong("start_ms", 0L)
+                val score = r.optInt("score", 0)
+                val level = r.optInt("level", 2)
+                if (startMs > 0 && score > 0) {
+                    list.add(StressRecord(startMs / 1000L, score, level))
+                }
+            }
+            _stressHistoryFlow.value = list
+            Log.i(TAG, "loadStressHistoryFromAssets: Loaded ${list.size} historical stress readings")
+            list
+        } catch (e: Exception) {
+            Log.w(TAG, "loadStressHistoryFromAssets error: ${e.message}")
             emptyList()
         }
     }

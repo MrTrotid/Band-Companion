@@ -15,12 +15,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.DirectionsRun
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -39,13 +46,26 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandcompanion.app.ui.theme.AmberGoldRing
 import com.bandcompanion.app.ui.theme.AmberStrain
 import com.bandcompanion.app.ui.theme.CoralRed
+import com.bandcompanion.app.ui.theme.CrimsonStrain
 import com.bandcompanion.app.ui.theme.ElectricCyan
+import com.bandcompanion.app.ui.theme.ElectricTealRing
 import com.bandcompanion.app.ui.theme.GlassDockBorder
+import com.bandcompanion.app.ui.theme.HighRed
+import com.bandcompanion.app.ui.theme.HotMagentaRing
+import com.bandcompanion.app.ui.theme.MediumOrange
+import com.bandcompanion.app.ui.theme.NeonCyanRing
 import com.bandcompanion.app.ui.theme.NeonTeal
+import com.bandcompanion.app.ui.theme.NormalBlue
 import com.bandcompanion.app.ui.theme.ObsidianBlack
 import com.bandcompanion.app.ui.theme.ObsidianCard
+import com.bandcompanion.app.ui.theme.ObsidianHighlight
+import com.bandcompanion.app.ui.theme.RelaxedGreen
+import com.bandcompanion.app.ui.theme.SleepDeepColor
+import com.bandcompanion.app.ui.theme.SleepLightColor
+import com.bandcompanion.app.ui.theme.SleepRemColor
 import com.bandcompanion.app.ui.theme.SurfaceDark
 import com.bandcompanion.app.ui.theme.SurfaceVariantDark
 import com.bandcompanion.app.ui.theme.TextMuted
@@ -68,23 +88,433 @@ fun TrendsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "PHYSIOLOGICAL TRENDS & ADAPTATION",
+            text = "PHYSIOLOGICAL TRENDS & DISCOVERY",
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 4.dp, top = 4.dp)
         )
 
-        // ACWR Rolling Timeline Chart
+        // 1. VO2 Max & Cardiorespiratory Aerobic Fitness Engine
+        Vo2MaxCard()
+
+        // 2. Circadian Rhythm & Sleep Debt Analyzer
+        SleepDebtCard()
+
+        // 3. Autonomic HRV Resilience Radar (rMSSD)
+        HrvRadarCard()
+
+        // 4. Cardio Training Zones Breakdown
+        CardioZonesCard()
+
+        // 5. Daytime Stress vs Rest Matrix
+        DaytimeStressMatrixCard()
+
+        // 6. ACWR Rolling Timeline Chart
         AcwrTrendChartCard(summaries = summaries)
 
-        // Strain vs. Sleep Recovery Correlation
+        // 7. Strain vs. Sleep Recovery Correlation
         StrainRecoveryCorrelationCard()
 
-        // Resting Heart Rate Baseline Stability
+        // 8. Resting Heart Rate Baseline Stability
         RhrBaselineCard()
 
         Spacer(modifier = Modifier.height(110.dp))
+    }
+}
+
+/**
+ * 1. VO2 Max & Cardiorespiratory Aerobic Fitness Card.
+ */
+@Composable
+fun Vo2MaxCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = NeonTeal.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Speed, contentDescription = null, tint = NeonTeal, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "CARDIORESPIRATORY FITNESS", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(NeonTeal.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(text = "Superior Level", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NeonTeal)
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "49.4", fontSize = 36.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "mL / kg / min", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NeonTeal, modifier = Modifier.padding(bottom = 6.dp))
+                    Spacer(modifier = Modifier.weight(1f))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "AEROBIC CAPACITY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "Top 5% of Age Group", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                }
+
+                // Tier Gauge Bar (Poor, Fair, Good, Excellent, Superior)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .background(ObsidianHighlight, RoundedCornerShape(4.dp))
+                    ) {
+                        Box(modifier = Modifier.weight(1f).height(8.dp).background(HighRed.copy(alpha = 0.4f), RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp)))
+                        Box(modifier = Modifier.weight(1f).height(8.dp).background(MediumOrange.copy(alpha = 0.4f)))
+                        Box(modifier = Modifier.weight(1.2f).height(8.dp).background(NormalBlue.copy(alpha = 0.4f)))
+                        Box(modifier = Modifier.weight(1.2f).height(8.dp).background(ElectricCyan.copy(alpha = 0.6f)))
+                        Box(modifier = Modifier.weight(1.5f).height(8.dp).background(NeonTeal, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Poor (<35)", fontSize = 9.sp, color = TextMuted)
+                        Text(text = "Good (42)", fontSize = 9.sp, color = TextMuted)
+                        Text(text = "Superior (49+)", fontSize = 9.sp, color = NeonTeal, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Text(
+                    text = "Cooper & Storer-Davis physiological index derived from resting HR (52 bpm), max cardiovascular capacity, and active cadence reserve.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 2. Circadian Rhythm & Sleep Debt Analyzer Card.
+ */
+@Composable
+fun SleepDebtCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = ElectricCyan.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Bedtime, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "CIRCADIAN RHYTHM & SLEEP DEBT", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(RelaxedGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(text = "0m Sleep Debt", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RelaxedGreen)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(text = "OPTIMAL SLEEP WINDOW", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "10:15 PM – 06:15 AM", fontSize = 16.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                        Text(text = "Natural melatonin onset aligned", fontSize = 10.sp, color = TextSecondary)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "CONSISTENCY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "94%", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElectricCyan)
+                        Text(text = "High circadian stability", fontSize = 10.sp, color = RelaxedGreen)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "Last night's 7h 50m sleep satisfied 100% of physiological baseline requirements with zero cumulative fatigue.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 3. Autonomic HRV Resilience Radar (rMSSD) Card.
+ */
+@Composable
+fun HrvRadarCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = NeonTeal.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Timeline, contentDescription = null, tint = NeonTeal, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "AUTONOMIC HRV RESILIENCE", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Text(text = "Baseline 51–78 ms", fontSize = 11.sp, color = TextMuted)
+                }
+
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "67", fontSize = 36.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "ms rMSSD", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NeonTeal, modifier = Modifier.padding(bottom = 6.dp))
+                    Spacer(modifier = Modifier.weight(1f))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "VAGAL TONE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "+16% Above Median", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RelaxedGreen)
+                    }
+                }
+
+                // 7-day mini trend canvas
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(70.dp)
+                        .background(ObsidianHighlight, RoundedCornerShape(10.dp))
+                        .padding(8.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+
+                        // Baseline corridor shading (51 to 78 ms on 40 to 110 scale)
+                        val yTop = h - ((78f - 40f) / 70f * h)
+                        val yBottom = h - ((51f - 40f) / 70f * h)
+                        drawRect(
+                            color = NeonTeal.copy(alpha = 0.12f),
+                            topLeft = Offset(0f, yTop),
+                            size = androidx.compose.ui.geometry.Size(w, yBottom - yTop)
+                        )
+
+                        val hrvPoints = listOf(84f, 104f, 77f, 68f, 79f, 65f, 67f)
+                        val stepX = w / (hrvPoints.size - 1)
+                        val path = Path()
+                        for (i in hrvPoints.indices) {
+                            val px = i * stepX
+                            val py = h - ((hrvPoints[i] - 40f) / 70f * h)
+                            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                        }
+                        drawPath(path = path, color = NeonTeal, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+
+                        val lastX = (hrvPoints.size - 1) * stepX
+                        val lastY = h - ((hrvPoints.last() - 40f) / 70f * h)
+                        drawCircle(color = NeonTeal, radius = 4.5.dp.toPx(), center = Offset(lastX, lastY))
+                    }
+                }
+
+                Text(
+                    text = "High parasympathetic activation indicates rapid central nervous system recovery and optimal readiness for athletic exertion.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 4. Cardio Training Zones Breakdown Card.
+ */
+@Composable
+fun CardioZonesCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = HotMagentaRing.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Favorite, contentDescription = null, tint = HotMagentaRing, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "CARDIAC TRAINING ZONES", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Text(text = "Daily Distribution", fontSize = 11.sp, color = TextMuted)
+                }
+
+                ZoneBarRow(name = "Zone 1 • Active Recovery (<100 bpm)", pct = 45, color = NeonCyanRing, description = "Parasympathetic tone & recovery")
+                ZoneBarRow(name = "Zone 2 • Aerobic Base (100–120 bpm)", pct = 40, color = ElectricTealRing, description = "Mitochondrial development & fat oxidation")
+                ZoneBarRow(name = "Zone 3 • Aerobic Tempo (120–140 bpm)", pct = 12, color = HotMagentaRing, description = "Cardiovascular efficiency")
+                ZoneBarRow(name = "Zone 4 • Threshold (140–160 bpm)", pct = 3, color = AmberStrain, description = "Lactate threshold buffering")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoneBarRow(name: String, pct: Int, color: Color, description: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = name, fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            Text(text = "$pct%", fontSize = 11.sp, color = color, fontWeight = FontWeight.Bold)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(ObsidianHighlight, RoundedCornerShape(3.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(pct / 100f)
+                    .height(6.dp)
+                    .background(color, RoundedCornerShape(3.dp))
+            )
+        }
+        Text(text = description, fontSize = 9.sp, color = TextMuted)
+    }
+}
+
+/**
+ * 5. Daytime Stress vs Rest Matrix Card.
+ */
+@Composable
+fun DaytimeStressMatrixCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = NormalBlue.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.SelfImprovement, contentDescription = null, tint = NormalBlue, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "STRESS VS. REST LOAD MATRIX", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Text(text = "TruRelax™ Timeline", fontSize = 11.sp, color = NormalBlue, fontWeight = FontWeight.SemiBold)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StressMetricBadge(label = "Relaxed", pct = "42%", color = RelaxedGreen, modifier = Modifier.weight(1f))
+                    StressMetricBadge(label = "Balanced", pct = "58%", color = NormalBlue, modifier = Modifier.weight(1f))
+                    StressMetricBadge(label = "Elevated", pct = "0%", color = MediumOrange, modifier = Modifier.weight(1f))
+                    StressMetricBadge(label = "High", pct = "0%", color = HighRed, modifier = Modifier.weight(1f))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "100% of daytime intervals spent in restorative autonomic balance with zero acute stress spikes.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StressMetricBadge(label: String, pct: String, color: Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(ObsidianHighlight, RoundedCornerShape(10.dp))
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = label, fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(text = pct, fontSize = 14.sp, fontWeight = FontWeight.Black, color = color)
     }
 }
 

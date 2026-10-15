@@ -64,6 +64,7 @@ import com.bandcompanion.app.ui.component.SleepPerformanceCard
 import com.bandcompanion.app.ui.component.WatchHeroCard
 import com.bandcompanion.app.ui.component.WeatherCard
 import com.bandcompanion.app.ui.component.WeightBmiCard
+import com.bandcompanion.core.bluetooth.protocol.BandProtocolHandler
 import com.bandcompanion.app.ui.theme.CrimsonStrain
 import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.GlassDockBorder
@@ -110,7 +111,8 @@ fun DashboardScreen(
     onSyncClick: () -> Unit,
     onPairClick: () -> Unit,
     onLogMood: (moodType: String, energyLevel: Int, note: String?) -> Unit = { _, _, _ -> },
-    onLogWeight: (weightKg: Float, heightCm: Float, note: String?) -> Unit = { _, _, _ -> }
+    onLogWeight: (weightKg: Float, heightCm: Float, note: String?) -> Unit = { _, _, _ -> },
+    stressRecords: List<BandProtocolHandler.StressRecord> = emptyList()
 ) {
     val scrollState = rememberScrollState()
     val isBonded = deviceInfo?.isBonded == true
@@ -323,28 +325,29 @@ fun DashboardScreen(
         SleepPerformanceCard(
             sleepSession = latestSleepSession,
             overnightHrvMs = todaySummary?.avgHrv ?: latestSleepSession?.avgHrv ?: 67f,
-            respiratoryRate = latestSleepSession?.avgBreathRate ?: 14.0f
+            respiratoryRate = latestSleepSession?.avgBreathRate ?: 15.0f
         )
 
         // 5. Blood Oxygenation (SpO2)
         val realSpo2s = remember(hrSamples) { hrSamples.mapNotNull { it.spo2 } }
-        val latestSpotSpo2 = remember(realSpo2s) { realSpo2s.lastOrNull() }
         val minSpo2 = remember(realSpo2s) { realSpo2s.minOrNull() }
         val maxSpo2 = remember(realSpo2s) { realSpo2s.maxOrNull() }
 
         DashboardSectionHeader(title = "BLOOD OXYGENATION")
         OxygenationCard(
-            currentSpo2 = latestSpotSpo2 ?: todaySummary?.avgSpo2 ?: 97f,
-            minSpo2 = minSpo2 ?: todaySummary?.avgSpo2?.minus(1.5f) ?: 95f,
-            maxSpo2 = maxSpo2 ?: todaySummary?.avgSpo2?.plus(1.0f) ?: 99f
+            currentSpo2 = todaySummary?.avgSpo2 ?: 98f,
+            minSpo2 = minSpo2 ?: todaySummary?.avgSpo2?.minus(2.0f) ?: 95f,
+            maxSpo2 = maxSpo2 ?: 99f,
+            spo2Samples = hrSamples
         )
 
         // 6. Emotional Wellbeing & Autonomic Stress
         DashboardSectionHeader(title = "AUTONOMIC NERVOUS SYSTEM")
         EmotionalWellbeingCard(
-            stressScore = todaySummary?.stressScore ?: 26,
+            stressScore = todaySummary?.stressScore ?: 38,
             latestMood = latestMood,
-            onLogMoodClick = { showMoodDialog = true }
+            onLogMoodClick = { showMoodDialog = true },
+            stressRecords = stressRecords
         )
 
         // 7. Body Composition & BMI Tracker

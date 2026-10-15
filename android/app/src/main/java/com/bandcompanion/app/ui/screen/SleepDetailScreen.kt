@@ -412,8 +412,8 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                     )
                     BiomarkerTile(
                         title = "Breathing Rate",
-                        value = "${(session?.avgBreathRate ?: 14f).toInt()} bpm",
-                        sub = "Baseline: 11-14 bpm",
+                        value = "${(session?.avgBreathRate ?: 15f).toInt()} br/min",
+                        sub = "Baseline: 12-20 br/min",
                         icon = Icons.Default.Air,
                         color = ElectricCyan
                     )
@@ -425,8 +425,8 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                 ) {
                     BiomarkerTile(
                         title = "Avg Sleep SpO2",
-                        value = "${(session?.avgSpo2 ?: 97f).toInt()}%",
-                        sub = "Optimal: 95-99%",
+                        value = "${(session?.avgSpo2 ?: 98f).toInt()}%",
+                        sub = "Optimal: 95-100%",
                         icon = Icons.Default.Favorite,
                         color = ElectricCyan
                     )

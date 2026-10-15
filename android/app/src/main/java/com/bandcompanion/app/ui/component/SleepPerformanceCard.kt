@@ -225,7 +225,7 @@ fun SleepPerformanceCard(
                 )
                 BiomarkerChip(
                     label = "Respiration",
-                    value = if (respiratoryRate != null && respiratoryRate > 0) "%.1f br/m".format(respiratoryRate) else "14.0 br/m",
+                    value = if (respiratoryRate != null && respiratoryRate > 0) "%.1f br/min".format(respiratoryRate) else "15.0 br/min",
                     subtitle = "Sleep Apnea Safe",
                     color = SleepRemColor,
                     modifier = Modifier.weight(1f)
