@@ -1,6 +1,5 @@
 package com.bandcompanion.app.ui.component
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,13 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,13 +37,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bandcompanion.app.ui.theme.ElectricCyan
-import com.bandcompanion.app.ui.theme.GlassDockBackground
-import com.bandcompanion.app.ui.theme.GlassDockBorder
 import com.bandcompanion.app.ui.theme.GlassDockBorderMuted
 import com.bandcompanion.app.ui.theme.NeonTeal
 import com.bandcompanion.app.ui.theme.ObsidianBlack
@@ -59,18 +51,15 @@ import com.bandcompanion.app.ui.theme.TextMuted
 import com.bandcompanion.app.ui.theme.TextPrimary
 import com.bandcompanion.app.ui.theme.TextSecondary
 import com.bandcompanion.core.model.DeviceInfo
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * Apple/Dribbble-styled Athletic Top Navigation & Device Control Panel.
+ * Editorial Athletic Top Header.
  * Features:
- * - Frosted glass translucent header with specular gradient accent line
- * - Animated radar wave beacon indicating live BLE link activity
- * - Device status capsule with live battery percentage
- * - Interactive 360° spinning sync button with spring feedback
- * - Date and high-contrast athletic typography
+ * - Minimal, uncluttered branding with device model tag
+ * - Animated radar wave beacon showing live BLE connection status
+ * - Integrated connection status capsule with battery percentage
+ * - High-precision circular sync button with spring feedback
+ * - Balanced layout without redundant settings bloat
  */
 @Composable
 fun AthleticTopBar(
@@ -81,14 +70,11 @@ fun AthleticTopBar(
     isSyncing: Boolean = false,
     onSyncClick: () -> Unit,
     onPairClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val dateString = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()).uppercase()
     val isBonded = deviceInfo?.isBonded == true
     val effectiveBattery = batteryLevel ?: deviceInfo?.batteryLevel
 
-    // Infinite transition for continuous subtle animations
     val infiniteTransition = rememberInfiniteTransition(label = "topBarRadar")
 
     // Radar pulse wave animation
@@ -102,7 +88,7 @@ fun AthleticTopBar(
         label = "radarWave"
     )
 
-    // Sync button rotation
+    // Sync button rotation animation
     val syncRotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -125,7 +111,7 @@ fun AthleticTopBar(
         isSyncing -> "SYNCING..."
         isLiveConnected -> "CONNECTED"
         isLiveConnecting -> "CONNECTING..."
-        else -> "NOT CONNECTED"
+        else -> "OFFLINE"
     }
 
     Box(
@@ -140,51 +126,56 @@ fun AthleticTopBar(
                     )
                 )
             )
-            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
+            .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 10.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(44.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Brand Title & Today's Date
+            // Left: Clean, Confident Brand & Hardware Identity
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp),
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "BAND COMPANION",
                     style = androidx.compose.ui.text.TextStyle(
                         color = TextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 0.sp
+                        letterSpacing = 0.5.sp
                     ),
                     maxLines = 1
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                Text(
-                    text = dateString,
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
-                    maxLines = 1
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "HUAWEI BAND 10",
+                        color = ElectricCyan.copy(alpha = 0.85f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = " • LOCAL CORE",
+                        color = TextMuted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
             }
 
-            // Right: Device Capsule & Action Buttons (Sync + Settings) - Exactly 34dp height for perfect baseline alignment
+            // Right: Unified Status Capsule + Single Sync Action Button
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Connection Status Capsule (34dp height)
+                // Connection Status & Battery Capsule (34dp height)
                 Box(
                     modifier = Modifier
                         .height(34.dp)
@@ -198,19 +189,18 @@ fun AthleticTopBar(
                             shape = RoundedCornerShape(17.dp)
                         )
                         .clickable(enabled = !isBonded) { onPairClick() }
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 11.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // Radar Beacon Canvas
                         Canvas(modifier = Modifier.size(10.dp)) {
                             val center = Offset(size.width / 2f, size.height / 2f)
                             val baseRadius = 3.dp.toPx()
 
-                            // Expanding pulse wave when active or connecting
                             if (isLiveConnected || isLiveConnecting) {
                                 val waveRadius = baseRadius + (pulseProgress * 3.dp.toPx())
                                 val waveAlpha = (1f - pulseProgress).coerceIn(0f, 1f) * 0.6f
@@ -222,7 +212,6 @@ fun AthleticTopBar(
                                 )
                             }
 
-                            // Solid center beacon dot
                             drawCircle(
                                 color = beaconColor,
                                 radius = baseRadius,
@@ -235,7 +224,7 @@ fun AthleticTopBar(
                             color = if (isLiveConnected) TextPrimary else beaconColor,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.3.sp
+                            letterSpacing = 0.4.sp
                         )
 
                         // Battery indicator if connected
@@ -250,12 +239,12 @@ fun AthleticTopBar(
                                 imageVector = Icons.Default.BatteryChargingFull,
                                 contentDescription = "Battery",
                                 tint = if (battery > 20) NeonTeal else StatusConnectingAmber,
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                             Text(
                                 text = "$battery%",
                                 color = TextPrimary,
-                                fontSize = 10.sp,
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -285,28 +274,10 @@ fun AthleticTopBar(
                             .rotate(if (isSyncing) syncRotation else 0f)
                     )
                 }
-
-                // Top-Right Settings Action Button (34dp circle)
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF282C38))
-                        .border(0.75.dp, GlassDockBorderMuted, CircleShape)
-                        .clickable { onSettingsClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(17.dp)
-                    )
-                }
             }
         }
 
-        // Bottom specular highlight gradient hairline
+        // Bottom specular hairline
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -316,8 +287,9 @@ fun AthleticTopBar(
                     Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            GlassDockBorder.copy(alpha = 0.6f),
-                            GlassDockBorderMuted.copy(alpha = 0.3f),
+                            GlassDockBorderMuted.copy(alpha = 0.4f),
+                            ElectricCyan.copy(alpha = 0.25f),
+                            GlassDockBorderMuted.copy(alpha = 0.4f),
                             Color.Transparent
                         )
                     )

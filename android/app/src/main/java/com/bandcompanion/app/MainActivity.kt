@@ -243,7 +243,6 @@ fun MainAppContent(
     var isSyncingWeather by remember { mutableStateOf(false) }
     var weatherCondition by remember { mutableStateOf(WeatherCondition(19, 1, "Clear Sky", "Kathmandu", 1, 42)) }
     var installedWatchfaces by remember { mutableStateOf<List<WatchfaceItem>>(emptyList()) }
-    var isSettingsOpen by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -547,53 +546,39 @@ fun MainAppContent(
     Scaffold(
         containerColor = ObsidianBlack,
         topBar = {
-            if (!isSettingsOpen) {
-                AthleticTopBar(
-                    deviceInfo = primaryDevice,
-                    batteryLevel = effectiveBattery,
-                    isLiveConnected = isLiveConnected,
-                    isLiveConnecting = isLiveConnecting,
-                    isSyncing = isSyncing,
-                    onSyncClick = {
-                        isSyncing = true
-                        onSyncRequested()
-                        coroutineScope.launch {
-                            val bat = bleManager.protocolHandler.queryBattery()
-                            if (bat != null) {
-                                deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
-                            }
-                            delay(2000)
-                            isSyncing = false
+            AthleticTopBar(
+                deviceInfo = primaryDevice,
+                batteryLevel = effectiveBattery,
+                isLiveConnected = isLiveConnected,
+                isLiveConnecting = isLiveConnecting,
+                isSyncing = isSyncing,
+                onSyncClick = {
+                    isSyncing = true
+                    onSyncRequested()
+                    coroutineScope.launch {
+                        val bat = bleManager.protocolHandler.queryBattery()
+                        if (bat != null) {
+                            deviceRepo.updateBatteryAndSync(devId, bat, System.currentTimeMillis())
                         }
-                    },
-                    onPairClick = {
-                        isPairingOpen = true
-                        bleScanner.startScan()
-                    },
-                    onSettingsClick = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(NavigationTab.DEVICE.ordinal)
-                        }
+                        delay(2000)
+                        isSyncing = false
                     }
-                )
-            }
+                },
+                onPairClick = {
+                    isPairingOpen = true
+                    bleScanner.startScan()
+                }
+            )
         },
         bottomBar = {
-            if (!isSettingsOpen) {
-                AthleticNavigationBar(
-                    pagerState = pagerState,
-                    onTabSelected = { targetPage ->
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(targetPage)
-                        }
-                    },
-                    onTabScrubbed = { targetPage ->
-                        coroutineScope.launch {
-                            pagerState.scrollToPage(targetPage)
-                        }
+            AthleticNavigationBar(
+                pagerState = pagerState,
+                onTabSelected = { targetPage ->
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(targetPage)
                     }
-                )
-            }
+                }
+            )
         }
     ) { innerPadding ->
         Box(
@@ -601,81 +586,11 @@ fun MainAppContent(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            if (isSettingsOpen) {
-                SettingsScreen(
-                    deviceInfo = primaryDevice,
-                    isLiveConnected = isLiveConnected,
-                    isLiveConnecting = isLiveConnecting,
-                    onBackClick = { isSettingsOpen = false },
-                    onExportCsvClick = {
-                        coroutineScope.launch {
-                            val currentEpochSec = System.currentTimeMillis() / 1000
-                            val monthAgo = currentEpochSec - (30 * 86400)
-                            val file = exportManager.exportSamplesToCsv(devId, monthAgo, currentEpochSec)
-                            Toast.makeText(context, "CSV exported: ${file.name}", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onExportJsonClick = {
-                        coroutineScope.launch {
-                            val file = exportManager.exportFullJson(devId)
-                            Toast.makeText(context, "JSON exported: ${file.name}", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onFindBandClick = {
-                        coroutineScope.launch {
-                            val ok = bleManager.protocolHandler.findMyBand()
-                            Toast.makeText(context, if (ok) "Band 10 is vibrating!" else "Find command sent", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onWristChanged = { isRight ->
-                        coroutineScope.launch {
-                            bleManager.protocolHandler.setWearingWrist(isRight)
-                            Toast.makeText(context, if (isRight) "Wrist: Right" else "Wrist: Left", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onLiftToWakeChanged = { enabled ->
-                        coroutineScope.launch {
-                            bleManager.protocolHandler.setLiftToWake(enabled)
-                        }
-                    },
-                    onActivityReminderChanged = { enabled ->
-                        coroutineScope.launch {
-                            bleManager.protocolHandler.setActivityReminders(enabled)
-                        }
-                    },
-                    onOpenWatchfacesClick = {
-                        coroutineScope.launch {
-                            val faces = bleManager.protocolHandler.getWatchfaceInventory()
-                            if (faces.isNotEmpty()) {
-                                installedWatchfaces = faces
-                            }
-                            isWatchfaceGalleryOpen = true
-                        }
-                    },
-                    onOpenStressTestClick = { isStressTestOpen = true },
-                    onContinuousHrModeChanged = { mode ->
-                        coroutineScope.launch {
-                            val ok = bleManager.protocolHandler.setContinuousHeartRateMode(mode)
-                            Toast.makeText(context, if (mode == 1) "Heart Rate: Real-Time Mode (1 Hz)" else "Heart Rate: Smart Mode", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onImportJsonClick = {
-                        coroutineScope.launch {
-                            bleManager.protocolHandler.loadStressHistoryFromAssets(context)
-                            val sessions = bleManager.protocolHandler.loadTruSleepSequenceFromAssets(context)
-                            for (s in sessions) {
-                                sleepRepo.saveSession(devId, s)
-                            }
-                            Toast.makeText(context, "Health Archive Imported: TruSleep & TruRelax", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-            } else {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    when (NavigationTab.values()[page]) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (NavigationTab.values()[page]) {
                         NavigationTab.OVERVIEW -> OverviewScreen(
                             deviceInfo = primaryDevice,
                             todaySummary = todaySummary,
@@ -797,4 +712,3 @@ fun MainAppContent(
             }
         }
     }
-}
