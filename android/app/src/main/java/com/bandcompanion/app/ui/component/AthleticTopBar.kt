@@ -143,7 +143,9 @@ fun AthleticTopBar(
             .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -151,18 +153,18 @@ fun AthleticTopBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 8.dp)
+                    .padding(end = 8.dp),
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "BAND COMPANION",
                     style = androidx.compose.ui.text.TextStyle(
                         color = TextPrimary,
-                        fontSize = 13.5.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 0.2.sp
+                        letterSpacing = 0.sp
                     ),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    maxLines = 1
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
@@ -177,26 +179,26 @@ fun AthleticTopBar(
                 )
             }
 
-            // Right: Device Capsule & Action Buttons (Sync + Settings) - Exactly 32dp height for perfect baseline alignment
+            // Right: Device Capsule & Action Buttons (Sync + Settings) - Exactly 34dp height for perfect baseline alignment
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Connection Status Capsule (32dp height)
+                // Connection Status Capsule (34dp height)
                 Box(
                     modifier = Modifier
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(17.dp))
                         .background(Color(0xFF282C38))
                         .border(
                             width = 0.75.dp,
                             brush = Brush.horizontalGradient(
                                 colors = listOf(beaconColor.copy(alpha = 0.5f), GlassDockBorderMuted)
                             ),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(17.dp)
                         )
                         .clickable(enabled = !isBonded) { onPairClick() }
-                        .padding(horizontal = 9.dp),
+                        .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -248,7 +250,7 @@ fun AthleticTopBar(
                                 imageVector = Icons.Default.BatteryChargingFull,
                                 contentDescription = "Battery",
                                 tint = if (battery > 20) NeonTeal else StatusConnectingAmber,
-                                modifier = Modifier.size(11.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Text(
                                 text = "$battery%",
@@ -260,10 +262,10 @@ fun AthleticTopBar(
                     }
                 }
 
-                // Quick Sync Action Button (32dp circle)
+                // Quick Sync Action Button (34dp circle)
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF282C38))
                         .border(
@@ -279,15 +281,15 @@ fun AthleticTopBar(
                         contentDescription = "Sync",
                         tint = if (isSyncing) ElectricCyan else TextSecondary,
                         modifier = Modifier
-                            .size(16.dp)
+                            .size(17.dp)
                             .rotate(if (isSyncing) syncRotation else 0f)
                     )
                 }
 
-                // Top-Right Settings Action Button (32dp circle)
+                // Top-Right Settings Action Button (34dp circle)
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF282C38))
                         .border(0.75.dp, GlassDockBorderMuted, CircleShape)
@@ -298,7 +300,7 @@ fun AthleticTopBar(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
                         tint = TextSecondary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }

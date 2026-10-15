@@ -91,21 +91,42 @@ fun WatchfaceGalleryDialog(
     onDismiss: () -> Unit,
     onApplyWatchface: (String) -> Unit
 ) {
-    var selectedFaceId by remember {
-        mutableStateOf(currentFaceId ?: installedFaces.firstOrNull()?.fileName ?: "aurora_pulse")
+    val displayFaces = remember(installedFaces) {
+        if (installedFaces.isNotEmpty()) {
+            installedFaces.mapIndexed { idx, item ->
+                val (color1, color2, style) = when (idx % 6) {
+                    0 -> Triple(ElectricCyan, LavenderRecovery, "Athletic Minimal")
+                    1 -> Triple(HotMagentaRing, ElectricTealRing, "Activity Hub")
+                    2 -> Triple(AmberGoldRing, ElectricCyan, "Precision Analog")
+                    3 -> Triple(NeonTeal, ElectricCyan, "OLED Typographic")
+                    4 -> Triple(CrimsonStrain, Color.White, "High Contrast")
+                    else -> Triple(HotMagentaRing, NeonTeal, "Digital Telemetry")
+                }
+                GalleryWatchface(
+                    id = item.fileName,
+                    name = item.displayName.ifEmpty { "Watchface ${idx + 1}" },
+                    style = style,
+                    primaryColor = color1,
+                    secondaryColor = color2,
+                    isInstalled = true
+                )
+            }
+        } else {
+            listOf(
+                GalleryWatchface("default_watch_face", "Aurora Pulse", "Factory Default (LiteOS)", ElectricCyan, LavenderRecovery),
+                GalleryWatchface("com.huawei.watchface.panda", "Interactive Panda", "Emotional Wellbeing", NeonTeal, ElectricCyan),
+                GalleryWatchface("com.huawei.watchface.sports", "Athletic 4-Ring", "Activity Hub", HotMagentaRing, ElectricTealRing),
+                GalleryWatchface("com.huawei.watchface.analog", "Chrono Matrix", "Precision Analog", AmberGoldRing, ElectricCyan),
+                GalleryWatchface("2147483647", "Titanium Sport", "Pre-installed ROM", CrimsonStrain, Color.White),
+                GalleryWatchface("100001", "Neon Horizon", "AMOLED High Contrast", HotMagentaRing, NeonTeal)
+            )
+        }
+    }
+
+    var selectedFaceId by remember(displayFaces) {
+        mutableStateOf(currentFaceId ?: displayFaces.firstOrNull()?.id ?: "default_watch_face")
     }
     var isApplying by remember { mutableStateOf(false) }
-
-    val curatedCatalog = remember(installedFaces) {
-        listOf(
-            GalleryWatchface("aurora_pulse", "Aurora Pulse", "Athletic Minimal", ElectricCyan, LavenderRecovery),
-            GalleryWatchface("athletic_grid", "Athletic 4-Ring", "Activity Hub", HotMagentaRing, ElectricTealRing),
-            GalleryWatchface("chrono_matrix", "Chrono Matrix", "Precision Analog", AmberGoldRing, ElectricCyan),
-            GalleryWatchface("neon_horizon", "Neon Horizon", "OLED Typographic", NeonTeal, ElectricCyan),
-            GalleryWatchface("titanium_sport", "Titanium Sport", "High Contrast", CrimsonStrain, Color.White),
-            GalleryWatchface("cyberpunk_hud", "Cyberpunk HUD", "Digital Telemetry", HotMagentaRing, NeonTeal)
-        )
-    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -196,7 +217,7 @@ fun WatchfaceGalleryDialog(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.height(340.dp)
                     ) {
-                        items(curatedCatalog) { face ->
+                        items(displayFaces) { face ->
                             val isSelected = face.id == selectedFaceId
                             WatchfaceCardItem(
                                 face = face,
@@ -302,27 +323,35 @@ fun WatchfaceCardItem(
                 val w = size.width
                 val h = size.height
 
-                when (face.id) {
-                    "aurora_pulse" -> {
+                when {
+                    face.id.contains("default", ignoreCase = true) || face.id.contains("aurora", ignoreCase = true) -> {
                         // Cyan/violet neon curve
                         val path = androidx.compose.ui.graphics.Path()
                         path.moveTo(0f, h * 0.4f)
                         path.cubicTo(w * 0.3f, h * 0.2f, w * 0.7f, h * 0.6f, w, h * 0.35f)
                         drawPath(path, face.primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
                     }
-                    "athletic_grid" -> {
+                    face.id.contains("sport", ignoreCase = true) || face.id.contains("grid", ignoreCase = true) -> {
                         // 3 concentric activity arcs
                         drawArc(face.primaryColor, 0f, 260f, false, topLeft = Offset(10f, 20f), size = Size(w - 20f, w - 20f), style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
                         drawArc(face.secondaryColor, 0f, 210f, false, topLeft = Offset(20f, 30f), size = Size(w - 40f, w - 40f), style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
                         drawArc(NeonCyanRing, 0f, 310f, false, topLeft = Offset(30f, 40f), size = Size(w - 60f, w - 60f), style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
                     }
-                    "chrono_matrix" -> {
+                    face.id.contains("analog", ignoreCase = true) || face.id.contains("chrono", ignoreCase = true) -> {
                         // Analog dial with tick markers
                         val center = Offset(w / 2f, h / 2f)
                         drawCircle(Color(0xFF1E212B), radius = w * 0.42f, center = center, style = Stroke(1.5.dp.toPx()))
                         drawLine(face.primaryColor, center, Offset(center.x + 20f, center.y - 30f), strokeWidth = 2.dp.toPx())
                         drawLine(face.secondaryColor, center, Offset(center.x - 22f, center.y + 10f), strokeWidth = 2.dp.toPx())
                         drawCircle(Color.White, radius = 3.dp.toPx(), center = center)
+                    }
+                    face.id.contains("panda", ignoreCase = true) -> {
+                        // Emotional wellbeing face
+                        val center = Offset(w / 2f, h / 2f)
+                        drawCircle(Color.White.copy(alpha = 0.9f), radius = w * 0.32f, center = center)
+                        drawCircle(Color(0xFF1F222B), radius = w * 0.08f, center = Offset(center.x - 14f, center.y - 8f))
+                        drawCircle(Color(0xFF1F222B), radius = w * 0.08f, center = Offset(center.x + 14f, center.y - 8f))
+                        drawCircle(NeonTeal, radius = w * 0.05f, center = Offset(center.x, center.y + 10f))
                     }
                     else -> {
                         // Digital futuristic HUD

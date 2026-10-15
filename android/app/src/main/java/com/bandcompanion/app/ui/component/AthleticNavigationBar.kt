@@ -40,8 +40,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +88,7 @@ fun AthleticNavigationBar(
     val tabs = NavigationTab.values()
     val continuousOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
     val coroutineScope = rememberCoroutineScope()
+    var accumulatedDragX by remember { mutableStateOf(0f) }
 
     Box(
         modifier = modifier
@@ -94,19 +97,20 @@ fun AthleticNavigationBar(
             .draggable(
                 orientation = Orientation.Horizontal,
                 state = rememberDraggableState { delta ->
+                    accumulatedDragX += delta
                     coroutineScope.launch {
-                        pagerState.dispatchRawDelta(-delta)
+                        pagerState.dispatchRawDelta(delta)
                     }
                 },
                 onDragStopped = { velocity ->
                     coroutineScope.launch {
-                        val targetPage = if (velocity < -300f) {
-                            (pagerState.currentPage + 1).coerceAtMost(tabs.size - 1)
-                        } else if (velocity > 300f) {
-                            (pagerState.currentPage - 1).coerceAtLeast(0)
-                        } else {
-                            pagerState.targetPage
+                        val pageDelta = when {
+                            velocity > 250f || accumulatedDragX > 40f -> 1
+                            velocity < -250f || accumulatedDragX < -40f -> -1
+                            else -> 0
                         }
+                        accumulatedDragX = 0f
+                        val targetPage = (pagerState.currentPage + pageDelta).coerceIn(0, tabs.size - 1)
                         pagerState.animateScrollToPage(targetPage)
                     }
                 }
@@ -203,23 +207,28 @@ fun AthleticNavigationBar(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tab.label,
-                                    tint = if (proximity > 0.5f) ElectricCyan else TextMuted,
-                                    modifier = Modifier
-                                        .size(23.dp)
-                                        .scale(iconScale)
-                                )
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.label,
+                                        tint = if (proximity > 0.5f) ElectricCyan else TextMuted,
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .scale(iconScale)
+                                    )
+                                }
 
-                                Spacer(modifier = Modifier.height(3.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
 
                                 Text(
                                     text = tab.label.uppercase(),
                                     color = if (proximity > 0.5f) TextPrimary else TextMuted,
-                                    fontSize = 9.sp,
+                                    fontSize = 8.5.sp,
                                     fontWeight = if (proximity > 0.5f) FontWeight.Black else FontWeight.SemiBold,
-                                    letterSpacing = 0.6.sp
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                         }
@@ -354,23 +363,28 @@ fun AthleticNavigationBar(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tab.label,
-                                    tint = contentColor,
-                                    modifier = Modifier
-                                        .size(23.dp)
-                                        .scale(iconScale)
-                                )
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.label,
+                                        tint = contentColor,
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .scale(iconScale)
+                                    )
+                                }
 
-                                Spacer(modifier = Modifier.height(3.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
 
                                 Text(
                                     text = tab.label.uppercase(),
                                     color = if (isSelected) TextPrimary else TextMuted,
-                                    fontSize = 9.sp,
+                                    fontSize = 8.5.sp,
                                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
-                                    letterSpacing = 0.6.sp
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                         }

@@ -288,9 +288,18 @@ fun MainAppContent(
 
     val stressHistory by bleManager.protocolHandler.stressHistoryFlow.collectAsState()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(devId) {
         // Clear previously auto-injected mock sleep sessions so only real user sleep from band is displayed
         sleepRepo.clearSessions(devId)
+
+        // Restore stored credentials so encrypted commands (watchfaces, weather, HR mode) work immediately
+        val (authKey, secretKey) = deviceRepo.getDeviceCredentials(devId)
+        if (secretKey != null && bleManager.protocolHandler.cachedSecretKey == null) {
+            bleManager.protocolHandler.cachedSecretKey = HiChain3Crypto.hexToBytes(secretKey)
+        }
+        if (authKey != null && bleManager.protocolHandler.cachedAuthKey == null) {
+            bleManager.protocolHandler.cachedAuthKey = HiChain3Crypto.hexToBytes(authKey)
+        }
     }
 
     LaunchedEffect(todaySamples) {
@@ -483,11 +492,17 @@ fun MainAppContent(
             onDismiss = { isWatchfaceGalleryOpen = false },
             onApplyWatchface = { faceId ->
                 coroutineScope.launch {
+                    if (bleManager.protocolHandler.cachedSecretKey == null) {
+                        val (_, storedSecret) = deviceRepo.getDeviceCredentials(devId)
+                        if (storedSecret != null) {
+                            bleManager.protocolHandler.cachedSecretKey = HiChain3Crypto.hexToBytes(storedSecret)
+                        }
+                    }
                     val ok = bleManager.protocolHandler.activateWatchface(faceId)
                     if (ok) {
-                        Toast.makeText(context, "Watchface applied to Band 10!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "🎉 Watchface applied to Huawei Band 10!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Applied locally", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Watchface command dispatched to Band 10", Toast.LENGTH_SHORT).show()
                     }
                     isWatchfaceGalleryOpen = false
                 }
@@ -735,12 +750,18 @@ fun MainAppContent(
                                 }
                             },
                             onOpenWatchfacesClick = {
+                                isWatchfaceGalleryOpen = true
                                 coroutineScope.launch {
+                                    if (bleManager.protocolHandler.cachedSecretKey == null) {
+                                        val (_, storedSecret) = deviceRepo.getDeviceCredentials(devId)
+                                        if (storedSecret != null) {
+                                            bleManager.protocolHandler.cachedSecretKey = HiChain3Crypto.hexToBytes(storedSecret)
+                                        }
+                                    }
                                     val faces = bleManager.protocolHandler.getWatchfaceInventory()
                                     if (faces.isNotEmpty()) {
                                         installedWatchfaces = faces
                                     }
-                                    isWatchfaceGalleryOpen = true
                                 }
                             },
                             onOpenStressTestClick = { isStressTestOpen = true },

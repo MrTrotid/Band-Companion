@@ -1820,9 +1820,19 @@ class BandProtocolHandler(
     suspend fun getWatchfaceInventory(): List<WatchfaceItem> {
         if (cachedSecretKey == null) return emptyList()
         try {
+            // Step 1: Send WATCHFACE_PARAMS (0x01) first to establish watchface session with band
+            val paramsPayload = VarIntTlv.encode(0x01, ByteArray(0)) +
+                    VarIntTlv.encode(0x02, ByteArray(0)) +
+                    VarIntTlv.encode(0x03, ByteArray(0)) +
+                    VarIntTlv.encode(0x04, ByteArray(0)) +
+                    VarIntTlv.encode(0x05, ByteArray(0))
+            transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_PARAMS, paramsPayload, timeoutMs = 4000)
+
+            // Step 2: Send WATCHFACE_LIST (0x02)
             val listPayload = VarIntTlv.encode(0x01, ByteArray(0)) + VarIntTlv.encode(0x06, byteArrayOf(0x03))
             val listResp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_LIST, listPayload, timeoutMs = 8000) ?: return emptyList()
-            val container = listResp[0x81] ?: return emptyList()
+            Log.i(TAG, "getWatchfaceInventory: listResp keys=${listResp.keys}")
+            val container = listResp[0x81] ?: listResp[0x82] ?: return emptyList()
             val items = VarIntTlv.decodeItems(container)
             val rawFaces = mutableListOf<Pair<String, String>>()
 
@@ -1876,6 +1886,7 @@ class BandProtocolHandler(
             fileName.contains("default", ignoreCase = true) -> "Aurora Pulse"
             fileName.contains("sport", ignoreCase = true) -> "Athletic Grid"
             fileName.contains("analog", ignoreCase = true) -> "Chrono Matrix"
+            fileName.contains("panda", ignoreCase = true) -> "Interactive Panda"
             fileName.length > 12 -> "Neon Horizon"
             else -> "Obsidian Classic"
         }
@@ -1885,14 +1896,34 @@ class BandProtocolHandler(
      * Activates a watchface on the Huawei Band 10 screen (CMD_WATCHFACE_OPERATION 0x03).
      */
     suspend fun activateWatchface(fileName: String, version: String = ""): Boolean {
-        if (cachedSecretKey == null) return false
+        if (cachedSecretKey == null) {
+            Log.w(TAG, "activateWatchface: cachedSecretKey is null")
+            return false
+        }
         try {
+            // Step 1: Prime session with WATCHFACE_PARAMS (0x01)
+            val paramsPayload = VarIntTlv.encode(0x01, ByteArray(0)) +
+                    VarIntTlv.encode(0x02, ByteArray(0)) +
+                    VarIntTlv.encode(0x03, ByteArray(0))
+            transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_PARAMS, paramsPayload, timeoutMs = 3000)
+
+            // Step 2: Dispatch WATCHFACE_OPERATION (0x03)
             val payload = VarIntTlv.encode(0x01, fileName.toByteArray(Charsets.UTF_8)) +
                     VarIntTlv.encode(0x02, version.toByteArray(Charsets.UTF_8)) +
                     VarIntTlv.encode(0x03, byteArrayOf(0x01))
             val resp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_OPERATION, payload, timeoutMs = 8000)
             Log.i(TAG, "activateWatchface: fileName=$fileName, resp=${resp?.keys}")
-            return resp != null
+            if (resp != null) return true
+
+            // Fallback attempt: omit tag 0x02 if version is empty
+            if (version.isEmpty()) {
+                val fallbackPayload = VarIntTlv.encode(0x01, fileName.toByteArray(Charsets.UTF_8)) +
+                        VarIntTlv.encode(0x03, byteArrayOf(0x01))
+                val fallbackResp = transactEncrypted(SVC_WATCHFACE, CMD_WATCHFACE_OPERATION, fallbackPayload, timeoutMs = 8000)
+                Log.i(TAG, "activateWatchface fallback: resp=${fallbackResp?.keys}")
+                return fallbackResp != null
+            }
+            return false
         } catch (e: Exception) {
             Log.w(TAG, "activateWatchface error: ${e.message}")
             return false
