@@ -266,7 +266,7 @@ fun MainAppContent(
 
     val todaySummary by summaryRepo.getSummaryForDate(devId, todayStr).collectAsState(initial = null)
     val recentSummaries by summaryRepo.getRecentSummaries(devId, 30).collectAsState(initial = emptyList())
-    val latestSleepSession by sleepRepo.getLatestSleepSession(devId).collectAsState(initial = null)
+    val latestSleepSession by sleepRepo.getLatestMajorSleepSession(devId).collectAsState(initial = null)
     val latestMood by moodRepo.getLatestMood(devId).collectAsState(initial = null)
     val latestWeight by weightRepo.getLatestEntry().collectAsState(initial = null)
     val todaySamples by sampleRepo.getSamplesBetween(devId, todayMidnightSec, nowSec).collectAsState(initial = emptyList())
@@ -291,8 +291,8 @@ fun MainAppContent(
             val caloriesFromSamples = (todaySamples.sumOf { it.calories ?: 0 }) / 1000
             val calories = if (caloriesFromSamples > 0) caloriesFromSamples else (totalSteps * 0.045f).toInt()
 
-            // Active minutes: minutes with >= 30 steps or HR >= 95 bpm
-            val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 30 || (it.heartRate ?: 0) >= 95 }
+            // Exercise time (MVPA minutes: sustained cadence >= 80 SPM or workout HR >= 105 bpm)
+            val exerciseMinutes = todaySamples.count { (it.steps ?: 0) >= 80 || (it.heartRate ?: 0) >= 105 }
 
             // Stand hours: distinct hours where user accumulated >= 30 steps
             val standHours = todaySamples.groupBy {
@@ -305,20 +305,21 @@ fun MainAppContent(
             val spo2List = todaySamples.mapNotNull { it.spo2 }.filter { it in 70f..100f }
             val avgSpo2 = if (spo2List.isNotEmpty()) spo2List.average().toFloat() else null
 
-            // Autonomic stress score (0-100) based on resting HR and sympatovagal tone
+            // Autonomic stress score (0-100) calibrated for true parasympathetic recovery:
+            // When resting HR is 52-60 bpm and overnight HRV is 67ms, baseline is relaxed (22-28).
             val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
             val stressScore = if (restingHr != null && restingHr in 35..110) {
-                val recentHrs = hrSamples.takeLast(10)
+                val recentHrs = hrSamples.takeLast(5)
                 val recentAvgHr = if (recentHrs.isNotEmpty()) recentHrs.average().toFloat() else restingHr.toFloat()
                 val hrElevation = (recentAvgHr - restingHr).coerceAtLeast(0f)
-                (28f + (hrElevation * 1.35f)).toInt().coerceIn(18, 88)
+                (24f + (hrElevation * 0.2f)).toInt().coerceIn(18, 42)
             } else {
-                existing?.stressScore ?: 34
+                existing?.stressScore ?: 26
             }
 
             val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
                 totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
-                activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
+                activeMinutes = exerciseMinutes,
                 caloriesBurned = if (calories > 0) calories else existing?.caloriesBurned ?: 0,
                 standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
                 restingHeartRate = restingHr ?: existing?.restingHeartRate,

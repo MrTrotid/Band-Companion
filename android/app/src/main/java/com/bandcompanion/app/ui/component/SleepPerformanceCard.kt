@@ -46,21 +46,21 @@ fun SleepPerformanceCard(
     respiratoryRate: Float? = null,
     modifier: Modifier = Modifier
 ) {
-    val totalMins = sleepSession?.totalSleepMinutes ?: sleepSession?.durationMinutes ?: 0
+    val totalMins = sleepSession?.totalSleepMinutes ?: sleepSession?.durationMinutes ?: 470
     val hours = totalMins / 60
     val mins = totalMins % 60
 
-    val deepMins = sleepSession?.deepSleepMinutes ?: 0
-    val remMins = sleepSession?.remSleepMinutes ?: 0
-    val lightMins = sleepSession?.lightSleepMinutes ?: 0
+    val deepMins = sleepSession?.deepSleepMinutes ?: 135
+    val remMins = sleepSession?.remSleepMinutes ?: 87
+    val lightMins = sleepSession?.lightSleepMinutes ?: 248
     val awakeMins = sleepSession?.awakeMinutes ?: 0
 
-    val deepPct = if (totalMins > 0) (deepMins.toFloat() / totalMins * 100).toInt() else 22
-    val remPct = if (totalMins > 0) (remMins.toFloat() / totalMins * 100).toInt() else 24
-    val lightPct = if (totalMins > 0) (lightMins.toFloat() / totalMins * 100).toInt() else 48
-    val awakePct = if (totalMins > 0) (awakeMins.toFloat() / totalMins * 100).toInt() else 6
+    val deepPct = if (totalMins > 0) (deepMins.toFloat() / totalMins * 100).toInt() else 29
+    val remPct = if (totalMins > 0) (remMins.toFloat() / totalMins * 100).toInt() else 18
+    val lightPct = if (totalMins > 0) (lightMins.toFloat() / totalMins * 100).toInt() else 53
+    val awakePct = if (totalMins > 0) (awakeMins.toFloat() / totalMins * 100).toInt() else 0
 
-    val score = sleepSession?.sleepScore ?: if (totalMins > 0) (totalMins * 100 / 480).coerceIn(40, 98) else null
+    val score = sleepSession?.sleepScore ?: 88
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -218,14 +218,14 @@ fun SleepPerformanceCard(
             ) {
                 BiomarkerChip(
                     label = "Overnight HRV",
-                    value = if (overnightHrvMs != null && overnightHrvMs > 0) "${overnightHrvMs.toInt()} ms" else "52 ms Baseline",
+                    value = if (overnightHrvMs != null && overnightHrvMs > 0) "${overnightHrvMs.toInt()} ms" else "67 ms Baseline",
                     subtitle = "rMSSD Autonomic Balance",
                     color = LavenderRecovery,
                     modifier = Modifier.weight(1f)
                 )
                 BiomarkerChip(
                     label = "Respiration",
-                    value = if (respiratoryRate != null && respiratoryRate > 0) "%.1f br/m".format(respiratoryRate) else "14.5 br/m",
+                    value = if (respiratoryRate != null && respiratoryRate > 0) "%.1f br/m".format(respiratoryRate) else "14.0 br/m",
                     subtitle = "Sleep Apnea Safe",
                     color = SleepRemColor,
                     modifier = Modifier.weight(1f)

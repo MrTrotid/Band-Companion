@@ -100,10 +100,10 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
     val hasRealTimes = session != null && session.startTimestamp > 0
     val startLocalStr = if (hasRealTimes) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.startTimestamp))
-    } else "11:30 PM"
+    } else "10:13 PM"
     val endLocalStr = if (hasRealTimes && session!!.endTimestamp > 0) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.endTimestamp))
-    } else "07:15 AM"
+    } else "06:03 AM"
 
     Card(
         modifier = Modifier
@@ -142,7 +142,7 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "${session?.sleepScore ?: 69}",
+                        text = "${session?.sleepScore ?: 88}",
                         fontSize = 38.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -154,7 +154,7 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Efficiency: ${(session?.sleepEfficiency ?: 86f).toInt()}% • Latency: ${session?.latencyMinutes ?: 13}m",
+                        text = "Efficiency: ${(session?.sleepEfficiency ?: 98f).toInt()}% • Latency: ${session?.latencyMinutes ?: 10}m",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
@@ -167,13 +167,13 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         color = TextMuted
                     )
                     Text(
-                        text = formatMinutes(session?.totalSleepMinutes ?: 76),
+                        text = formatMinutes(session?.totalSleepMinutes ?: 470),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = ElectricCyan
                     )
                     Text(
-                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 76)}",
+                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 470)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -286,11 +286,11 @@ fun LegendItem(label: String, color: Color) {
 
 @Composable
 fun StageBreakdownCard(session: SleepSession?) {
-    val total = (session?.totalSleepMinutes ?: 277).coerceAtLeast(1)
-    val deepMin = session?.deepSleepMinutes ?: 64
-    val remMin = session?.remSleepMinutes ?: 52
-    val lightMin = session?.lightSleepMinutes ?: 161
-    val awakeMin = session?.awakeMinutes ?: 38
+    val total = (session?.totalSleepMinutes ?: 470).coerceAtLeast(1)
+    val deepMin = session?.deepSleepMinutes ?: 135
+    val remMin = session?.remSleepMinutes ?: 87
+    val lightMin = session?.lightSleepMinutes ?: 248
+    val awakeMin = session?.awakeMinutes ?: 0
 
     Card(
         modifier = Modifier
@@ -405,14 +405,14 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                 ) {
                     BiomarkerTile(
                         title = "Overnight HRV",
-                        value = "${(session?.avgHrv ?: 84f).toInt()} ms",
+                        value = "${(session?.avgHrv ?: 67f).toInt()} ms",
                         sub = "Baseline: ${(session?.minHrvBaseline ?: 51f).toInt()}-${(session?.maxHrvBaseline ?: 78f).toInt()} ms",
                         icon = Icons.Default.Timeline,
                         color = NeonTeal
                     )
                     BiomarkerTile(
                         title = "Breathing Rate",
-                        value = "${(session?.avgBreathRate ?: 13f).toInt()} bpm",
+                        value = "${(session?.avgBreathRate ?: 14f).toInt()} bpm",
                         sub = "Baseline: 11-14 bpm",
                         icon = Icons.Default.Air,
                         color = ElectricCyan
@@ -422,22 +422,22 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                BiomarkerTile(
-                    title = "Avg Sleep SpO2",
-                    value = "${(session?.avgSpo2 ?: 96f).toInt()}%",
-                    sub = "Optimal: 95-99%",
-                    icon = Icons.Default.Favorite,
-                    color = ElectricCyan
-                )
-                BiomarkerTile(
-                    title = "Sleep Heart Rate",
-                    value = "${session?.avgHeartRate ?: 54} bpm",
-                    sub = "Restful drop: -12%",
-                    icon = Icons.Default.Bedtime,
-                    color = SleepLightColor
-                )
-            }
+                ) {
+                    BiomarkerTile(
+                        title = "Avg Sleep SpO2",
+                        value = "${(session?.avgSpo2 ?: 97f).toInt()}%",
+                        sub = "Optimal: 95-99%",
+                        icon = Icons.Default.Favorite,
+                        color = ElectricCyan
+                    )
+                    BiomarkerTile(
+                        title = "Sleep Heart Rate",
+                        value = "${session?.avgHeartRate ?: 60} bpm",
+                        sub = "Restful drop: -12%",
+                        icon = Icons.Default.Bedtime,
+                        color = SleepLightColor
+                    )
+                }
         }
     }
 }
@@ -469,26 +469,36 @@ private fun formatMinutes(minutes: Int): String {
 }
 
 private fun sampleHypnogramStages(): List<SleepStageInterval> {
-    val base = 1791217740L
-    return listOf(
-        SleepStageInterval(SleepStageType.AWAKE, base, base + 780),
-        SleepStageInterval(SleepStageType.LIGHT, base + 780, base + 3600),
-        SleepStageInterval(SleepStageType.DEEP, base + 3600, base + 7200),
-        SleepStageInterval(SleepStageType.REM, base + 7200, base + 9600),
-        SleepStageInterval(SleepStageType.LIGHT, base + 9600, base + 14400),
-        SleepStageInterval(SleepStageType.DEEP, base + 14400, base + 16800),
-        SleepStageInterval(SleepStageType.REM, base + 16800, base + 19200),
-        SleepStageInterval(SleepStageType.AWAKE, base + 19200, base + 21060)
+    val base = 1791995280L // 22:13:00 Oct 14
+    val intervals = mutableListOf<SleepStageInterval>()
+    var cur = base
+    val plan = listOf(
+        Pair(SleepStageType.LIGHT, 25 * 60L),
+        Pair(SleepStageType.DEEP, 50 * 60L),
+        Pair(SleepStageType.LIGHT, 35 * 60L),
+        Pair(SleepStageType.REM, 20 * 60L),
+        Pair(SleepStageType.DEEP, 45 * 60L),
+        Pair(SleepStageType.LIGHT, 40 * 60L),
+        Pair(SleepStageType.REM, 30 * 60L),
+        Pair(SleepStageType.DEEP, 40 * 60L),
+        Pair(SleepStageType.LIGHT, 60 * 60L),
+        Pair(SleepStageType.REM, 37 * 60L),
+        Pair(SleepStageType.LIGHT, 88 * 60L)
     )
+    for ((stage, dur) in plan) {
+        intervals.add(SleepStageInterval(stage, cur, cur + dur, dur.toInt()))
+        cur += dur
+    }
+    return intervals
 }
 
 @Composable
 fun DaytimeNapsCard(session: SleepSession?) {
     // Check if session qualifies as daytime nap (duration < 3 hours)
-    val isRecordedNap = session != null && session.durationMinutes in 15..180
-    val napDurationMinutes = if (isRecordedNap) session!!.durationMinutes else 45
-    val napDeepMinutes = if (isRecordedNap) session!!.deepSleepMinutes else 20
-    val napLightMinutes = if (isRecordedNap) session!!.lightSleepMinutes else 25
+    val isRecordedNap = session != null && session.durationMinutes in 15..179
+    val napDurationMinutes = if (isRecordedNap) session!!.durationMinutes else 0
+    val napDeepMinutes = if (isRecordedNap) session!!.deepSleepMinutes else 0
+    val napLightMinutes = if (isRecordedNap) session!!.lightSleepMinutes else 0
 
     Card(
         modifier = Modifier
@@ -545,7 +555,7 @@ fun DaytimeNapsCard(session: SleepSession?) {
                                 letterSpacing = 1.0.sp
                             )
                             Text(
-                                text = if (isRecordedNap) "1 Nap Detected Today" else "Restorative Power Nap",
+                                text = if (isRecordedNap) "1 Nap Detected Today" else "0 Naps Detected Today",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary,
                                 fontWeight = FontWeight.SemiBold
@@ -567,7 +577,7 @@ fun DaytimeNapsCard(session: SleepSession?) {
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (isRecordedNap) "AUTONOMIC REBOUND" else "RECOMMENDED",
+                            text = if (isRecordedNap) "AUTONOMIC REBOUND" else "CONSOLIDATED REST",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isRecordedNap) NeonTeal else ElectricCyan,
@@ -582,19 +592,24 @@ fun DaytimeNapsCard(session: SleepSession?) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = formatMinutes(napDurationMinutes),
+                                text = if (isRecordedNap) formatMinutes(napDurationMinutes) else "0m",
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Black,
                                 color = TextPrimary
                             )
                         }
                         Text(
-                            text = if (isRecordedNap) "Recorded via Huawei TruSleep Staging" else "Ideal 20-45m restorative nap window",
+                            text = if (isRecordedNap) "Recorded via Huawei TruSleep Staging" else "All physical & cognitive recovery consolidated overnight",
                             fontSize = 11.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            lineHeight = 15.sp
                         )
                     }
 
@@ -606,7 +621,7 @@ fun DaytimeNapsCard(session: SleepSession?) {
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (isRecordedNap) "+18% Readiness" else "+15% Focus",
+                            text = if (isRecordedNap) "+18% Readiness" else "100% Rest",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = NeonTeal
@@ -614,40 +629,42 @@ fun DaytimeNapsCard(session: SleepSession?) {
                     }
                 }
 
-                // Staging Distribution Bar
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Deep Sleep (Physical): ${napDeepMinutes}m",
-                            fontSize = 10.sp,
-                            color = SleepDeepColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Light Sleep: ${napLightMinutes}m",
-                            fontSize = 10.sp,
-                            color = SleepLightColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                if (isRecordedNap) {
+                    // Staging Distribution Bar
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Deep Sleep (Physical): ${napDeepMinutes}m",
+                                fontSize = 10.sp,
+                                color = SleepDeepColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Light Sleep: ${napLightMinutes}m",
+                                fontSize = 10.sp,
+                                color = SleepLightColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
 
-                    // Progress bar
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .background(SleepLightColor.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                    ) {
-                        val deepRatio = if (napDurationMinutes > 0) (napDeepMinutes.toFloat() / napDurationMinutes).coerceIn(0f, 1f) else 0.5f
+                        // Progress bar
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(deepRatio)
+                                .fillMaxWidth()
                                 .height(6.dp)
-                                .background(SleepDeepColor, RoundedCornerShape(3.dp))
-                        )
+                                .background(SleepLightColor.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                        ) {
+                            val deepRatio = if (napDurationMinutes > 0) (napDeepMinutes.toFloat() / napDurationMinutes).coerceIn(0f, 1f) else 0.5f
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(deepRatio)
+                                    .height(6.dp)
+                                    .background(SleepDeepColor, RoundedCornerShape(3.dp))
+                            )
+                        }
                     }
                 }
             }

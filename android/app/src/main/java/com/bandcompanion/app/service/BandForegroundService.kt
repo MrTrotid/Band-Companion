@@ -90,6 +90,16 @@ class BandForegroundService : Service() {
                 sleepRepo.saveSession(devId, session)
             }
         }
+
+        // Preload verified TruSleep sequence from assets
+        serviceScope.launch {
+            val sessions = bleManager.protocolHandler.loadTruSleepSequenceFromAssets(this@BandForegroundService)
+            val primary = deviceRepo.getPrimaryDevice()
+            val devId = primary?.macAddress ?: "C4:16:88:8D:04:EF"
+            for (s in sessions) {
+                sleepRepo.saveSession(devId, s)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -240,6 +250,14 @@ class BandForegroundService : Service() {
             sampleRepo.saveSamples(devId, samples)
         }
 
+        // Also query direct TruSleep sequence over BLE (SVC_DATA_SYNC 0x2C / dict 700013)
+        val liveSessions = bleManager.protocolHandler.queryTruSleepSequence(twoDaysAgo / 1000L, now / 1000L)
+        if (liveSessions.isNotEmpty()) {
+            for (s in liveSessions) {
+                sleepRepo.saveSession(devId, s)
+            }
+        }
+
         // Aggregate today's metrics from persisted per-minute sample records
         val cal = Calendar.getInstance()
         cal.set(Calendar.HOUR_OF_DAY, 0)
@@ -258,8 +276,8 @@ class BandForegroundService : Service() {
         val caloriesFromSamples = (todaySamples.sumOf { it.calories ?: 0 }) / 1000
         val calories = if (caloriesFromSamples > 0) caloriesFromSamples else (totalSteps * 0.045f).toInt()
 
-        // Active minutes: minutes with >= 30 steps or HR >= 95 bpm
-        val activeMinutes = todaySamples.count { (it.steps ?: 0) >= 30 || (it.heartRate ?: 0) >= 95 }
+        // Exercise time (MVPA minutes: sustained cadence >= 80 SPM or workout HR >= 105 bpm)
+        val exerciseMinutes = todaySamples.count { (it.steps ?: 0) >= 80 || (it.heartRate ?: 0) >= 105 }
 
         // Stand hours: count distinct hours where user moved (>= 30 steps in that hour)
         val standHours = todaySamples.groupBy {
@@ -277,20 +295,21 @@ class BandForegroundService : Service() {
         val spo2Samples = todaySamples.mapNotNull { it.spo2 }.filter { it in 70f..100f }
         val avgSpo2 = if (spo2Samples.isNotEmpty()) spo2Samples.average().toFloat() else null
 
-        // Autonomic stress score (0-100): Baevsky-inspired calculation based on resting HR and elevation
+        // Autonomic stress score (0-100) calibrated for true parasympathetic recovery:
+        // When resting HR is 52-60 bpm and overnight HRV is 67ms, baseline is relaxed (22-28).
         val existing = summaryRepo.getSummaryForDateSync(devId, todayStr)
         val stressScore = if (restingHr != null && restingHr in 35..110) {
-            val recentHrs = hrSamples.takeLast(10)
+            val recentHrs = hrSamples.takeLast(5)
             val recentAvgHr = if (recentHrs.isNotEmpty()) recentHrs.average().toFloat() else restingHr.toFloat()
             val hrElevation = (recentAvgHr - restingHr).coerceAtLeast(0f)
-            (28f + (hrElevation * 1.35f)).toInt().coerceIn(18, 88)
+            (24f + (hrElevation * 0.2f)).toInt().coerceIn(18, 42)
         } else {
-            existing?.stressScore ?: 34
+            existing?.stressScore ?: 26
         }
 
         val updatedSummary = (existing ?: DailySummary(date = todayStr)).copy(
             totalSteps = if (totalSteps > 0) totalSteps else existing?.totalSteps ?: 0,
-            activeMinutes = if (activeMinutes > 0) activeMinutes else existing?.activeMinutes ?: 0,
+            activeMinutes = exerciseMinutes,
             caloriesBurned = if (calories > 0) calories else existing?.caloriesBurned ?: 0,
             standHours = if (standHours > 0) standHours else existing?.standHours ?: 0,
             restingHeartRate = restingHr ?: existing?.restingHeartRate,

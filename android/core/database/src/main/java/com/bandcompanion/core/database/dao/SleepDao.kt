@@ -32,6 +32,12 @@ interface SleepDao {
     @Query("SELECT * FROM sleep_session WHERE device_id = :deviceId ORDER BY start_timestamp DESC LIMIT 1")
     suspend fun getLatestSleepSessionSync(deviceId: String): SleepSessionEntity?
 
+    @Query("SELECT * FROM sleep_session WHERE device_id = :deviceId AND duration_minutes >= 180 ORDER BY start_timestamp DESC LIMIT 1")
+    fun getLatestMajorSleepSession(deviceId: String): Flow<SleepSessionEntity?>
+
+    @Query("SELECT * FROM sleep_session WHERE device_id = :deviceId AND duration_minutes >= 180 ORDER BY start_timestamp DESC LIMIT 1")
+    suspend fun getLatestMajorSleepSessionSync(deviceId: String): SleepSessionEntity?
+
     @Query("SELECT * FROM sleep_stage_interval WHERE session_id = :sessionId ORDER BY start_timestamp ASC")
     fun getStagesForSession(sessionId: String): Flow<List<SleepStageIntervalEntity>>
 

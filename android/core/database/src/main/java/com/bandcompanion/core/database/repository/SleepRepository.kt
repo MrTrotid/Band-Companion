@@ -36,6 +36,18 @@ class SleepRepository(private val sleepDao: SleepDao) {
         }
     }
 
+    fun getLatestMajorSleepSession(deviceId: String): Flow<SleepSession?> {
+        return sleepDao.getLatestMajorSleepSession(deviceId).flatMapLatest { entity ->
+            if (entity == null) {
+                flowOf(null)
+            } else {
+                sleepDao.getStagesForSession(entity.sessionId).map { stageEntities ->
+                    entity.toDomainModel().copy(stages = stageEntities.map { it.toDomainModel() })
+                }
+            }
+        }
+    }
+
     suspend fun getLatestSleepSessionWithStages(deviceId: String): SleepSession? {
         val entity = sleepDao.getLatestSleepSessionSync(deviceId) ?: return null
         val stages = sleepDao.getStagesForSessionSync(entity.sessionId).map { it.toDomainModel() }

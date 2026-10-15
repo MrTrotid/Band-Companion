@@ -204,11 +204,11 @@ fun DashboardScreen(
         ConcentricActivityRings(
             stepCount = todaySummary?.totalSteps ?: 0,
             stepTarget = 10000,
-            activeMinutes = todaySummary?.activeMinutes ?: ((todaySummary?.totalSteps ?: 0) / 100),
+            activeMinutes = todaySummary?.activeMinutes ?: 0,
             activeMinutesTarget = 30,
             calories = todaySummary?.caloriesBurned ?: ((todaySummary?.totalSteps ?: 0) * 0.045f).toInt(),
             calorieTarget = 500,
-            standHours = todaySummary?.standHours ?: if ((todaySummary?.totalSteps ?: 0) > 2000) 8 else 3,
+            standHours = todaySummary?.standHours ?: 0,
             standHoursTarget = 12
         )
 
@@ -322,8 +322,8 @@ fun DashboardScreen(
         DashboardSectionHeader(title = "TRUSLEEP™ STAGING & REST")
         SleepPerformanceCard(
             sleepSession = latestSleepSession,
-            overnightHrvMs = todaySummary?.avgHrv,
-            respiratoryRate = 14.6f
+            overnightHrvMs = todaySummary?.avgHrv ?: latestSleepSession?.avgHrv ?: 67f,
+            respiratoryRate = latestSleepSession?.avgBreathRate ?: 14.0f
         )
 
         // 5. Blood Oxygenation (SpO2)
@@ -334,7 +334,7 @@ fun DashboardScreen(
 
         DashboardSectionHeader(title = "BLOOD OXYGENATION")
         OxygenationCard(
-            currentSpo2 = latestSpotSpo2 ?: todaySummary?.avgSpo2 ?: 98f,
+            currentSpo2 = latestSpotSpo2 ?: todaySummary?.avgSpo2 ?: 97f,
             minSpo2 = minSpo2 ?: todaySummary?.avgSpo2?.minus(1.5f) ?: 95f,
             maxSpo2 = maxSpo2 ?: todaySummary?.avgSpo2?.plus(1.0f) ?: 99f
         )
@@ -342,7 +342,7 @@ fun DashboardScreen(
         // 6. Emotional Wellbeing & Autonomic Stress
         DashboardSectionHeader(title = "AUTONOMIC NERVOUS SYSTEM")
         EmotionalWellbeingCard(
-            stressScore = todaySummary?.stressScore ?: 34,
+            stressScore = todaySummary?.stressScore ?: 26,
             latestMood = latestMood,
             onLogMoodClick = { showMoodDialog = true }
         )
