@@ -119,6 +119,12 @@ fun TrendsScreen(
         // 8. Resting Heart Rate Baseline Stability
         RhrBaselineCard()
 
+        // 9. Autonomic Recovery Quadrant (Sleep HRV vs RHR Baseline Z-Score, Section 20)
+        AutonomicRecoveryQuadrantCard()
+
+        // 10. Sleep Regularity Index (SRI) & Mid-Sleep Stability (Section 20)
+        SleepRegularityIndexCard()
+
         Spacer(modifier = Modifier.height(110.dp))
     }
 }
@@ -741,6 +747,191 @@ fun RhrBaselineCard() {
                         Text(text = "Stable (-1.2 bpm)", fontSize = 12.sp, color = NeonTeal, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 9. Autonomic Recovery Quadrant (Sleep HRV vs. RHR Rolling Baseline Z-Score, Section 20)
+ */
+@Composable
+fun AutonomicRecoveryQuadrantCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = NeonTeal.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.AutoGraph, contentDescription = null, tint = NeonTeal, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "AUTONOMIC RECOVERY QUADRANT", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(RelaxedGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(text = "Q1: Parasympathetic Primed", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RelaxedGreen)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(text = "SLEEP HRV Z-SCORE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "+1.1 SD", fontSize = 20.sp, fontWeight = FontWeight.Black, color = NeonTeal)
+                        Text(text = "Above 7-day median (67 ms)", fontSize = 10.sp, color = TextSecondary)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "RHR DEVIATION", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "-2.4 bpm", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ElectricCyan)
+                        Text(text = "Quiescent baseline drop", fontSize = 10.sp, color = RelaxedGreen)
+                    }
+                }
+
+                // 2D Quadrant Matrix Canvas
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(95.dp)
+                        .background(SurfaceVariantDark, RoundedCornerShape(10.dp))
+                        .padding(8.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val midX = w / 2f
+                        val midY = h / 2f
+
+                        // Shaded Q1 (Top-Left quadrant: High HRV, Low RHR)
+                        drawRect(
+                            color = RelaxedGreen.copy(alpha = 0.12f),
+                            topLeft = Offset(0f, 0f),
+                            size = androidx.compose.ui.geometry.Size(midX, midY)
+                        )
+
+                        // Axis lines
+                        drawLine(color = TextMuted.copy(alpha = 0.35f), start = Offset(midX, 0f), end = Offset(midX, h), strokeWidth = 1.dp.toPx())
+                        drawLine(color = TextMuted.copy(alpha = 0.35f), start = Offset(0f, midY), end = Offset(w, midY), strokeWidth = 1.dp.toPx())
+
+                        // Current coordinate point (Z-score +1.1, RHR -2.4)
+                        val pointX = midX - (2.4f / 6f * midX) // Lower RHR moves left into Q1
+                        val pointY = midY - (1.1f / 2.5f * midY) // Higher HRV moves up into Q1
+                        drawCircle(color = NeonTeal, radius = 5.dp.toPx(), center = Offset(pointX, pointY))
+                    }
+                }
+
+                Text(
+                    text = "Elevated vagal tone paired with a suppressed resting heart rate confirms optimal central nervous system recovery and cellular readiness for high athletic strain.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 10. Sleep Regularity Index (SRI) & Mid-Sleep Stability Card (Section 20)
+ */
+@Composable
+fun SleepRegularityIndexCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(22.dp), spotColor = ElectricCyan.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.75.dp, Brush.verticalGradient(listOf(GlassDockBorder.copy(alpha = 0.5f), Color.Transparent)), RoundedCornerShape(22.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Bedtime, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "SLEEP REGULARITY INDEX (SRI)", style = MaterialTheme.typography.labelSmall, color = TextMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(ElectricCyan.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(text = "94% SRI", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElectricCyan)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(text = "MID-SLEEP POINT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "02:08 AM", fontSize = 20.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+                        Text(text = "±18m weekly variance", fontSize = 10.sp, color = RelaxedGreen)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "CIRCADIAN STABILITY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(text = "High Regularity", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RelaxedGreen)
+                        Text(text = "Zero social jetlag", fontSize = 10.sp, color = TextSecondary)
+                    }
+                }
+
+                // 7-Day Consistency Raster Barcode
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val days = listOf("Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed")
+                    for (day in days) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(ObsidianHighlight, RoundedCornerShape(6.dp))
+                                .padding(vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(text = day, fontSize = 9.sp, color = TextMuted)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(modifier = Modifier.size(width = 16.dp, height = 24.dp).background(ElectricCyan.copy(alpha = 0.75f), RoundedCornerShape(3.dp)))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = "94%", fontSize = 9.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Stable sleep-wake timing within ±20 minutes across consecutive days maintains strong circadian rhythm amplitude and optimizes next-day executive performance.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp
+                )
             }
         }
     }

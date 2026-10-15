@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandcompanion.app.ui.theme.CrimsonStrain
 import com.bandcompanion.app.ui.theme.ElectricCyan
 import com.bandcompanion.app.ui.theme.GlassDockBorder
 import com.bandcompanion.app.ui.theme.GlassDockBorderMuted
@@ -87,12 +88,14 @@ fun SettingsScreen(
     onBackClick: (() -> Unit)? = null,
     onExportCsvClick: () -> Unit,
     onExportJsonClick: () -> Unit,
+    onImportJsonClick: () -> Unit = {},
     onFindBandClick: () -> Unit = {},
     onWristChanged: (isRightWrist: Boolean) -> Unit = {},
     onLiftToWakeChanged: (enabled: Boolean) -> Unit = {},
     onActivityReminderChanged: (enabled: Boolean) -> Unit = {},
     onOpenWatchfacesClick: () -> Unit = {},
-    onOpenStressTestClick: () -> Unit = {}
+    onOpenStressTestClick: () -> Unit = {},
+    onContinuousHrModeChanged: (mode: Int) -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
 
@@ -292,6 +295,67 @@ fun SettingsScreen(
                         }
                     }
 
+                    // Continuous HR Monitoring Mode (Section 5.1 of Research)
+                    var hrMode by remember { mutableStateOf(1) } // 1 = Real-Time (1 Hz continuous), 2 = Smart Mode
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "24/7 Heart Rate Mode", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(
+                                text = if (hrMode == 1) "Real-Time (1 Hz internal continuous evaluation)" else "Smart Mode (IMU dynamic adaptive 5-10m)",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ObsidianHighlight)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (hrMode == 1) CrimsonStrain else Color.Transparent)
+                                    .clickable {
+                                        hrMode = 1
+                                        onContinuousHrModeChanged(1)
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "REAL-TIME",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hrMode == 1) TextPrimary else TextSecondary
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (hrMode == 2) CrimsonStrain else Color.Transparent)
+                                    .clickable {
+                                        hrMode = 2
+                                        onContinuousHrModeChanged(2)
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "SMART",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hrMode == 2) TextPrimary else TextSecondary
+                                )
+                            }
+                        }
+                    }
+
                     // Lift-to-Wake Toggle
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -483,6 +547,18 @@ fun SettingsScreen(
                         ) {
                             Text(text = "Export JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
+
+                    // Huawei GDPR / Health Archive Importer (Section 14 & 18)
+                    Button(
+                        onClick = onImportJsonClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = ObsidianHighlight, contentColor = TextPrimary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Import Huawei Health Archive (JSON)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

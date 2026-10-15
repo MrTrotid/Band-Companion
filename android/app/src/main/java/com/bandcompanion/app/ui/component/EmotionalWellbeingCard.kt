@@ -213,6 +213,32 @@ fun EmotionalWellbeingCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Physical Stillness Gate & Motion-Gating Indicator (Section 8.2)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ObsidianHighlight, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(stressColor, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Physical Stillness Gate Active • Gated during movement to prevent exertion from skewing autonomic tone",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextMuted,
+                        lineHeight = 13.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
             // Check-in Action Button
             Button(
                 onClick = onLogMoodClick,

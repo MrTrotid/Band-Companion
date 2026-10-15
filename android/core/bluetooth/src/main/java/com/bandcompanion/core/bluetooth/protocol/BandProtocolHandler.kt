@@ -1270,6 +1270,26 @@ class BandProtocolHandler(
     }
 
     /**
+     * Configures continuous heart rate monitoring mode on Huawei Band 10 hardware:
+     * - mode = 1: Real-Time Mode (evaluates continuously every second, 1 Hz internal update)
+     * - mode = 2: Smart Mode (dynamically adjusts sampling periodicity based on IMU activity state)
+     * - mode = 0: Disabled
+     */
+    suspend fun setContinuousHeartRateMode(mode: Int): Boolean {
+        return try {
+            if (cachedSecretKey == null) return false
+            val hrPayload = VarIntTlv.encode(0x01, byteArrayOf((mode and 0xFF).toByte()))
+            sendEncryptedNoWait(SVC_HEALTH, CMD_AUTO_HR, hrPayload)
+            delay(100L)
+            Log.i(TAG, "setContinuousHeartRateMode: mode set to $mode (1=RealTime, 2=Smart)")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "setContinuousHeartRateMode error: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Queries battery percentage (Cmd 0x01/0x08).
      */
     suspend fun queryBattery(): Int? {

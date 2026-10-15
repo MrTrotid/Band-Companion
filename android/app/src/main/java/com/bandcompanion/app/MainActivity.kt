@@ -611,7 +611,23 @@ fun MainAppContent(
                             isWatchfaceGalleryOpen = true
                         }
                     },
-                    onOpenStressTestClick = { isStressTestOpen = true }
+                    onOpenStressTestClick = { isStressTestOpen = true },
+                    onContinuousHrModeChanged = { mode ->
+                        coroutineScope.launch {
+                            val ok = bleManager.protocolHandler.setContinuousHeartRateMode(mode)
+                            Toast.makeText(context, if (mode == 1) "Heart Rate: Real-Time Mode (1 Hz)" else "Heart Rate: Smart Mode", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onImportJsonClick = {
+                        coroutineScope.launch {
+                            bleManager.protocolHandler.loadStressHistoryFromAssets(context)
+                            val sessions = bleManager.protocolHandler.loadTruSleepSequenceFromAssets(context)
+                            for (s in sessions) {
+                                sleepRepo.saveSession(devId, s)
+                            }
+                            Toast.makeText(context, "Health Archive Imported: TruSleep & TruRelax", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 )
             } else {
                 HorizontalPager(

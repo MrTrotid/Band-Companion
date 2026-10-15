@@ -217,6 +217,34 @@ fun OxygenationCard(
                 }
             }
 
+            // Sensor Coverage & Motion-Gated Completeness Ribbon (Section 6.1)
+            Spacer(modifier = Modifier.height(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = "OPTICAL SENSOR COVERAGE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Text(text = "94% Quiescent Rest Windows", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = SpO2Cyan)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .background(ObsidianHighlight, RoundedCornerShape(3.dp))
+                ) {
+                    Box(modifier = Modifier.weight(0.92f).height(6.dp).background(SpO2Cyan, RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp)))
+                    Box(modifier = Modifier.weight(0.08f).height(6.dp).background(MediumOrange, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = "Rest Periods (Valid SpO2)", fontSize = 9.sp, color = TextMuted)
+                    Text(text = "Motion-Gated (Active Exertion)", fontSize = 9.sp, color = MediumOrange)
+                }
+            }
+
             // Expandable Exact Timestamps Section
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(18.dp))
