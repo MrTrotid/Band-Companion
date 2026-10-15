@@ -59,4 +59,9 @@ class SleepRepository(private val sleepDao: SleepDao) {
             list.map { it.toDomainModel() }
         }
     }
+
+    suspend fun clearSessions(deviceId: String) {
+        sleepDao.clearSessionsForDevice(deviceId)
+        sleepDao.clearAllStages()
+    }
 }

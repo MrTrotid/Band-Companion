@@ -289,11 +289,8 @@ fun MainAppContent(
     val stressHistory by bleManager.protocolHandler.stressHistoryFlow.collectAsState()
 
     LaunchedEffect(Unit) {
-        bleManager.protocolHandler.loadStressHistoryFromAssets(context)
-        val sessions = bleManager.protocolHandler.loadTruSleepSequenceFromAssets(context)
-        for (s in sessions) {
-            sleepRepo.saveSession(devId, s)
-        }
+        // Clear previously auto-injected mock sleep sessions so only real user sleep from band is displayed
+        sleepRepo.clearSessions(devId)
     }
 
     LaunchedEffect(todaySamples) {

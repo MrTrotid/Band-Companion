@@ -44,6 +44,12 @@ interface SleepDao {
     @Query("SELECT * FROM sleep_stage_interval WHERE session_id = :sessionId ORDER BY start_timestamp ASC")
     suspend fun getStagesForSessionSync(sessionId: String): List<SleepStageIntervalEntity>
 
+    @Query("DELETE FROM sleep_session WHERE device_id = :deviceId")
+    suspend fun clearSessionsForDevice(deviceId: String)
+
+    @Query("DELETE FROM sleep_stage_interval")
+    suspend fun clearAllStages()
+
     @Transaction
     suspend fun insertSessionWithStages(session: SleepSessionEntity, stages: List<SleepStageIntervalEntity>) {
         insertSleepSession(session)

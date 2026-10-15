@@ -90,16 +90,6 @@ class BandForegroundService : Service() {
                 sleepRepo.saveSession(devId, session)
             }
         }
-
-        // Preload verified TruSleep sequence from assets
-        serviceScope.launch {
-            val sessions = bleManager.protocolHandler.loadTruSleepSequenceFromAssets(this@BandForegroundService)
-            val primary = deviceRepo.getPrimaryDevice()
-            val devId = primary?.macAddress ?: "C4:16:88:8D:04:EF"
-            for (s in sessions) {
-                sleepRepo.saveSession(devId, s)
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -151,9 +151,9 @@ fun OverviewScreen(
 
             VitalTile(
                 title = "TRUSLEEP REST",
-                value = formatSleepDuration(latestSleepSession?.durationMinutes ?: 470),
-                unit = "88 Score",
-                subtext = "Deep: 2h 15m (28%)",
+                value = if (latestSleepSession != null) formatSleepDuration(latestSleepSession.durationMinutes) else "--",
+                unit = if (latestSleepSession != null) "${latestSleepSession.sleepScore} Score" else "No Data",
+                subtext = if (latestSleepSession != null) "Deep: ${formatSleepDuration(latestSleepSession.deepSleepMinutes)} (${latestSleepSession.deepSleepPercentage}%)" else "Wear band to bed",
                 icon = Icons.Default.Bedtime,
                 accentColor = SleepDeepColor,
                 modifier = Modifier.weight(1f).clickable { onNavigateToSleep() }
@@ -174,11 +174,12 @@ fun OverviewScreen(
                 modifier = Modifier.weight(1f).clickable { onNavigateToHealth() }
             )
 
+            val hrv = latestSleepSession?.avgHrv
             VitalTile(
                 title = "NOCTURNAL HRV",
-                value = "${(latestSleepSession?.avgHrv ?: 67f).toInt()}",
+                value = if (hrv != null && hrv > 0) "${hrv.toInt()}" else "--",
                 unit = "ms rMSSD",
-                subtext = "Corridor 51–78 ms",
+                subtext = if (hrv != null && hrv > 0) "Corridor 51–78 ms" else "Recorded during sleep",
                 icon = Icons.Default.Timeline,
                 accentColor = NeonTeal,
                 modifier = Modifier.weight(1f).clickable { onNavigateToHealth() }
@@ -213,8 +214,8 @@ fun OverviewScreen(
         // 4. Evidence-Based Observations (Section 5 & 14)
         EvidenceObservationsCard(
             restingHr = todaySummary?.restingHeartRate ?: 52,
-            sleepMinutes = latestSleepSession?.durationMinutes ?: 470,
-            deepMinutes = latestSleepSession?.deepSleepMinutes ?: 135,
+            sleepMinutes = latestSleepSession?.durationMinutes ?: 0,
+            deepMinutes = latestSleepSession?.deepSleepMinutes ?: 0,
             dayStrain = dayStrain
         )
 
@@ -438,12 +439,21 @@ private fun EvidenceObservationsCard(
                     text = "Resting HR ($restingHr bpm) is 2.4 bpm below your 30-day baseline, indicating strong central nervous system recovery."
                 )
 
-                ObservationRow(
-                    icon = Icons.Default.CheckCircle,
-                    color = SleepDeepColor,
-                    title = "Consolidated Slow-Wave Sleep",
-                    text = "Overnight sleep duration of ${formatSleepDuration(sleepMinutes)} satisfied 100% of physiological sleep need with ${formatSleepDuration(deepMinutes)} of deep restorative sleep."
-                )
+                if (sleepMinutes > 0) {
+                    ObservationRow(
+                        icon = Icons.Default.CheckCircle,
+                        color = SleepDeepColor,
+                        title = "Consolidated Slow-Wave Sleep",
+                        text = "Overnight sleep duration of ${formatSleepDuration(sleepMinutes)} satisfied 100% of physiological sleep need with ${formatSleepDuration(deepMinutes)} of deep restorative sleep."
+                    )
+                } else {
+                    ObservationRow(
+                        icon = Icons.Default.CheckCircle,
+                        color = SleepDeepColor,
+                        title = "Awaiting Nightly Sleep Tracking",
+                        text = "Wear your Band 10 to bed. On-wrist TruSleep computes sleep architecture, overnight HRV, and sleep score after ~30m of morning activity."
+                    )
+                }
 
                 ObservationRow(
                     icon = Icons.Default.CheckCircle,
@@ -508,8 +518,17 @@ private fun SleepShortcutCard(
                     Icon(imageVector = Icons.Default.Bedtime, contentDescription = null, tint = SleepDeepColor, modifier = Modifier.size(16.dp))
                 }
                 Column {
-                    Text(text = "View Clinical Sleep Hypnogram", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text(text = "Explore 4-stage hypnogram & SpO2 stability", fontSize = 10.sp, color = TextMuted)
+                    Text(
+                        text = if (session != null) "View Clinical Sleep Hypnogram" else "Explore Sleep Tracking",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = if (session != null) "Explore 4-stage hypnogram & SpO2 stability" else "Wear Band 10 overnight to generate 4-stage hypnogram",
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
                 }
             }
 

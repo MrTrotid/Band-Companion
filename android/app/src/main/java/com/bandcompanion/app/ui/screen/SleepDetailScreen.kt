@@ -87,7 +87,7 @@ fun SleepDetailScreen(
         SleepScoreHeaderCard(session = session)
 
         // Hypnogram Timeline Canvas
-        HypnogramCard(stages = session?.stages ?: sampleHypnogramStages())
+        HypnogramCard(stages = session?.stages ?: emptyList())
 
         // Sleep Architecture Distribution
         StageBreakdownCard(session = session)
@@ -113,10 +113,10 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
     val hasRealTimes = session != null && session.startTimestamp > 0
     val startLocalStr = if (hasRealTimes) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.startTimestamp))
-    } else "10:13 PM"
+    } else null
     val endLocalStr = if (hasRealTimes && session!!.endTimestamp > 0) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(session!!.endTimestamp))
-    } else "06:03 AM"
+    } else null
 
     Card(
         modifier = Modifier
@@ -146,7 +146,7 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = "LAST NIGHT'S SLEEP",
                         style = MaterialTheme.typography.labelSmall,
@@ -154,20 +154,27 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val score = session?.sleepScore
+                    val eff = session?.sleepEfficiency
+                    val lat = session?.latencyMinutes
                     Text(
-                        text = "${session?.sleepScore ?: 88}",
+                        text = if (score != null && score > 0) "$score" else "--",
                         fontSize = 38.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "$startLocalStr – $endLocalStr",
+                        text = if (startLocalStr != null && endLocalStr != null) "$startLocalStr – $endLocalStr" else "No Sleep Session Recorded",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Efficiency: ${(session?.sleepEfficiency ?: 98f).toInt()}% • Latency: ${session?.latencyMinutes ?: 10}m",
+                        text = if (eff != null) {
+                            "Efficiency: ${eff.toInt()}% • Latency: ${lat ?: 10}m"
+                        } else {
+                            "Wear your Band 10 to bed to track sleep architecture"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
@@ -180,13 +187,13 @@ fun SleepScoreHeaderCard(session: SleepSession?) {
                         color = TextMuted
                     )
                     Text(
-                        text = formatMinutes(session?.totalSleepMinutes ?: 470),
+                        text = if (session != null) formatMinutes(session.totalSleepMinutes) else "--",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = ElectricCyan
+                        color = if (session != null) ElectricCyan else TextMuted
                     )
                     Text(
-                        text = "In Bed: ${formatMinutes(session?.durationMinutes ?: 470)}",
+                        text = if (session != null) "In Bed: ${formatMinutes(session.durationMinutes)}" else "In Bed: --",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -244,193 +251,236 @@ fun HypnogramCard(stages: List<SleepStageInterval>) {
                     }
                 }
 
-                // Clinical TruSleep Stepped Hypnogram Canvas with Y-Axis Levels & HR Alignment
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(145.dp)
-                        .background(SurfaceVariantDark, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                ) {
-                    // Y-Axis Stage Labels
-                    Column(
+                if (stages.isEmpty()) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .padding(end = 6.dp, top = 4.dp, bottom = 22.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
+                            .fillMaxWidth()
+                            .height(145.dp)
+                            .background(SurfaceVariantDark, RoundedCornerShape(10.dp))
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "Awake", fontSize = 8.sp, color = SleepAwakeColor, fontWeight = FontWeight.Bold)
-                        Text(text = "REM", fontSize = 8.sp, color = SleepRemColor, fontWeight = FontWeight.Bold)
-                        Text(text = "Light", fontSize = 8.sp, color = SleepLightColor, fontWeight = FontWeight.Bold)
-                        Text(text = "Deep", fontSize = 8.sp, color = SleepDeepColor, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Main Multi-Track Canvas
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                if (stages.isEmpty()) return@Canvas
+                            Icon(
+                                imageVector = Icons.Default.Bedtime,
+                                contentDescription = null,
+                                tint = SleepDeepColor,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Text(
+                                text = "AWAITING NIGHTLY SLEEP TRACKING",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                letterSpacing = 0.6.sp
+                            )
+                            Text(
+                                text = "Wear your Huawei Band 10 to bed. On-wrist TruSleep compiles sleep stages after ~30m of morning activity.",
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    // Clinical TruSleep Stepped Hypnogram Canvas with Y-Axis Levels & HR Alignment
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(145.dp)
+                            .background(SurfaceVariantDark, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        // Y-Axis Stage Labels
+                        Column(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .padding(end = 6.dp, top = 4.dp, bottom = 22.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "Awake", fontSize = 8.sp, color = SleepAwakeColor, fontWeight = FontWeight.Bold)
+                            Text(text = "REM", fontSize = 8.sp, color = SleepRemColor, fontWeight = FontWeight.Bold)
+                            Text(text = "Light", fontSize = 8.sp, color = SleepLightColor, fontWeight = FontWeight.Bold)
+                            Text(text = "Deep", fontSize = 8.sp, color = SleepDeepColor, fontWeight = FontWeight.Bold)
+                        }
 
-                                val w = size.width
-                                val h = size.height
-                                val hypnoH = h * 0.70f
-                                val hrH = h * 0.30f
+                        // Main Multi-Track Canvas
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    if (stages.isEmpty()) return@Canvas
 
-                                // 4 Horizontal Stage Guide Lines
-                                val rowYAwake = hypnoH * 0.10f
-                                val rowYRem = hypnoH * 0.36f
-                                val rowYLight = hypnoH * 0.62f
-                                val rowYDeep = hypnoH * 0.88f
-                                val rowYs = listOf(rowYAwake, rowYRem, rowYLight, rowYDeep)
-                                for (ry in rowYs) {
-                                    drawLine(
-                                        color = TextMuted.copy(alpha = 0.15f),
-                                        start = Offset(0f, ry),
-                                        end = Offset(w, ry),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                }
+                                    val w = size.width
+                                    val h = size.height
+                                    val hypnoH = h * 0.70f
+                                    val hrH = h * 0.30f
 
-                                val totalDuration = stages.sumOf { it.durationSeconds }.toFloat().coerceAtLeast(1f)
-                                val widthScale = w / totalDuration
-
-                                // 1. Stepped Hypnogram Blocks & Vertical Transition Lines
-                                var currentX = 0f
-                                var prevY = rowYLight
-                                for (interval in stages) {
-                                    val segWidth = interval.durationSeconds * widthScale
-                                    val (segColor, targetY) = when (interval.stage) {
-                                        SleepStageType.AWAKE -> SleepAwakeColor to rowYAwake
-                                        SleepStageType.REM -> SleepRemColor to rowYRem
-                                        SleepStageType.LIGHT -> SleepLightColor to rowYLight
-                                        SleepStageType.DEEP -> SleepDeepColor to rowYDeep
-                                        SleepStageType.NAP -> SleepLightColor to rowYLight
-                                    }
-
-                                    // Vertical transition connector line
-                                    if (currentX > 0f && prevY != targetY) {
+                                    // 4 Horizontal Stage Guide Lines
+                                    val rowYAwake = hypnoH * 0.10f
+                                    val rowYRem = hypnoH * 0.36f
+                                    val rowYLight = hypnoH * 0.62f
+                                    val rowYDeep = hypnoH * 0.88f
+                                    val rowYs = listOf(rowYAwake, rowYRem, rowYLight, rowYDeep)
+                                    for (ry in rowYs) {
                                         drawLine(
-                                            color = segColor.copy(alpha = 0.7f),
-                                            start = Offset(currentX, prevY),
-                                            end = Offset(currentX, targetY),
-                                            strokeWidth = 2.dp.toPx(),
-                                            cap = StrokeCap.Round
+                                            color = TextMuted.copy(alpha = 0.15f),
+                                            start = Offset(0f, ry),
+                                            end = Offset(w, ry),
+                                            strokeWidth = 1.dp.toPx()
                                         )
                                     }
 
-                                    // Horizontal stage block
-                                    val barHeight = 8.dp.toPx()
-                                    drawRoundRect(
-                                        color = segColor,
-                                        topLeft = Offset(currentX, targetY - (barHeight / 2f)),
-                                        size = Size(segWidth.coerceAtLeast(2.dp.toPx()), barHeight),
-                                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                    val totalDuration = stages.sumOf { it.durationSeconds }.toFloat().coerceAtLeast(1f)
+                                    val widthScale = w / totalDuration
+
+                                    // 1. Stepped Hypnogram Blocks & Vertical Transition Lines
+                                    var currentX = 0f
+                                    var prevY = rowYLight
+                                    for (interval in stages) {
+                                        val segWidth = interval.durationSeconds * widthScale
+                                        val (segColor, targetY) = when (interval.stage) {
+                                            SleepStageType.AWAKE -> SleepAwakeColor to rowYAwake
+                                            SleepStageType.REM -> SleepRemColor to rowYRem
+                                            SleepStageType.LIGHT -> SleepLightColor to rowYLight
+                                            SleepStageType.DEEP -> SleepDeepColor to rowYDeep
+                                            SleepStageType.NAP -> SleepLightColor to rowYLight
+                                        }
+
+                                        // Vertical transition connector line
+                                        if (currentX > 0f && prevY != targetY) {
+                                            drawLine(
+                                                color = segColor.copy(alpha = 0.7f),
+                                                start = Offset(currentX, prevY),
+                                                end = Offset(currentX, targetY),
+                                                strokeWidth = 2.dp.toPx(),
+                                                cap = StrokeCap.Round
+                                            )
+                                        }
+
+                                        // Horizontal stage block
+                                        val barHeight = 8.dp.toPx()
+                                        drawRoundRect(
+                                            color = segColor,
+                                            topLeft = Offset(currentX, targetY - (barHeight / 2f)),
+                                            size = Size(segWidth.coerceAtLeast(2.dp.toPx()), barHeight),
+                                            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                        )
+
+                                        currentX += segWidth
+                                        prevY = targetY
+                                    }
+
+                                    // 2. Synchronized Nocturnal Heart Rate Waveform (Deep Nadir 52 bpm, REM 68 bpm)
+                                    val hrPath = Path()
+                                    val hrFill = Path()
+                                    val hrSamplesCount = 36
+                                    for (i in 0 until hrSamplesCount) {
+                                        val frac = i.toFloat() / (hrSamplesCount - 1)
+                                        val px = frac * w
+                                        val hrBpm = when {
+                                            frac in 0.12f..0.28f -> 52.5f // Deep Sleep 1 (nadir)
+                                            frac in 0.32f..0.44f -> 67.5f // REM bout 1
+                                            frac in 0.48f..0.62f -> 53.0f // Deep Sleep 2 (nadir)
+                                            frac in 0.68f..0.82f -> 69.0f // REM bout 2
+                                            else -> 58.0f                 // Light baseline
+                                        }
+                                        val normY = 1f - ((hrBpm - 48f) / 26f).coerceIn(0f, 1f)
+                                        val py = hypnoH + (normY * (hrH - 4f)) + 2f
+
+                                        if (i == 0) {
+                                            hrPath.moveTo(px, py)
+                                            hrFill.moveTo(px, h)
+                                            hrFill.lineTo(px, py)
+                                        } else {
+                                            hrPath.lineTo(px, py)
+                                            hrFill.lineTo(px, py)
+                                        }
+                                    }
+                                    hrFill.lineTo(w, h)
+                                    hrFill.close()
+
+                                    drawPath(
+                                        path = hrFill,
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(CrimsonStrain.copy(alpha = 0.20f), Color.Transparent),
+                                            startY = hypnoH,
+                                            endY = h
+                                        )
+                                    )
+                                    drawPath(
+                                        path = hrPath,
+                                        color = CrimsonStrain.copy(alpha = 0.85f),
+                                        style = Stroke(width = 1.75.dp.toPx(), cap = StrokeCap.Round)
                                     )
 
-                                    currentX += segWidth
-                                    prevY = targetY
-                                }
-
-                                // 2. Synchronized Nocturnal Heart Rate Waveform (Deep Nadir 52 bpm, REM 68 bpm)
-                                val hrPath = Path()
-                                val hrFill = Path()
-                                val hrSamplesCount = 36
-                                for (i in 0 until hrSamplesCount) {
-                                    val frac = i.toFloat() / (hrSamplesCount - 1)
-                                    val px = frac * w
-                                    val hrBpm = when {
-                                        frac in 0.12f..0.28f -> 52.5f // Deep Sleep 1 (nadir)
-                                        frac in 0.32f..0.44f -> 67.5f // REM bout 1
-                                        frac in 0.48f..0.62f -> 53.0f // Deep Sleep 2 (nadir)
-                                        frac in 0.68f..0.82f -> 69.0f // REM bout 2
-                                        else -> 58.0f                 // Light baseline
+                                    // 3. SpO2 Markers along timeline (97–99%)
+                                    val spo2Fracs = listOf(0.15f, 0.32f, 0.48f, 0.65f, 0.80f, 0.94f)
+                                    for (f in spo2Fracs) {
+                                        drawCircle(color = SpO2Cyan, radius = 2.5.dp.toPx(), center = Offset(f * w, h - 3.dp.toPx()))
                                     }
-                                    val normY = 1f - ((hrBpm - 48f) / 26f).coerceIn(0f, 1f)
-                                    val py = hypnoH + (normY * (hrH - 4f)) + 2f
-
-                                    if (i == 0) {
-                                        hrPath.moveTo(px, py)
-                                        hrFill.moveTo(px, h)
-                                        hrFill.lineTo(px, py)
-                                    } else {
-                                        hrPath.lineTo(px, py)
-                                        hrFill.lineTo(px, py)
-                                    }
-                                }
-                                hrFill.lineTo(w, h)
-                                hrFill.close()
-
-                                drawPath(
-                                    path = hrFill,
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(CrimsonStrain.copy(alpha = 0.20f), Color.Transparent),
-                                        startY = hypnoH,
-                                        endY = h
-                                    )
-                                )
-                                drawPath(
-                                    path = hrPath,
-                                    color = CrimsonStrain.copy(alpha = 0.85f),
-                                    style = Stroke(width = 1.75.dp.toPx(), cap = StrokeCap.Round)
-                                )
-
-                                // 3. SpO2 Markers along timeline (97–99%)
-                                val spo2Fracs = listOf(0.15f, 0.32f, 0.48f, 0.65f, 0.80f, 0.94f)
-                                for (f in spo2Fracs) {
-                                    drawCircle(color = SpO2Cyan, radius = 2.5.dp.toPx(), center = Offset(f * w, h - 3.dp.toPx()))
                                 }
                             }
-                        }
 
-                        // Time Axis Labels
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "22:13", fontSize = 9.sp, color = TextMuted)
-                            Text(text = "00:00", fontSize = 9.sp, color = TextMuted)
-                            Text(text = "02:00", fontSize = 9.sp, color = TextMuted)
-                            Text(text = "04:00", fontSize = 9.sp, color = TextMuted)
-                            Text(text = "06:03", fontSize = 9.sp, color = TextMuted)
+                            // Dynamic Time Axis Labels
+                            val firstTs = stages.firstOrNull()?.startTimestamp ?: 0L
+                            val lastTs = stages.lastOrNull()?.endTimestamp ?: 0L
+                            val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = if (firstTs > 0) timeFmt.format(Date(firstTs * 1000L)) else "--:--", fontSize = 9.sp, color = TextMuted)
+                                Text(text = if (lastTs > 0) timeFmt.format(Date(lastTs * 1000L)) else "--:--", fontSize = 9.sp, color = TextMuted)
+                            }
                         }
                     }
-                }
 
-                // Legend & Correlation Annotations
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "• Crimson: Nocturnal HR (Nadir 52 bpm)",
-                        fontSize = 9.sp,
-                        color = CrimsonStrain,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "• Cyan: 97-99% SpO2",
-                        fontSize = 9.sp,
-                        color = SpO2Cyan,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                    // Legend & Correlation Annotations
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "• Crimson: Nocturnal HR",
+                            fontSize = 9.sp,
+                            color = CrimsonStrain,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "• Cyan: 97-99% SpO2",
+                            fontSize = 9.sp,
+                            color = SpO2Cyan,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
 
-                // Proportional Stage Summary Pills (Deep 2h 15m, Light 4h 8m, REM 1h 27m, Awake 0m)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    StageDurationPill(label = "Deep", duration = "2h 15m", pct = "28%", color = SleepDeepColor, modifier = Modifier.weight(1f))
-                    StageDurationPill(label = "Light", duration = "4h 8m", pct = "52%", color = SleepLightColor, modifier = Modifier.weight(1f))
-                    StageDurationPill(label = "REM", duration = "1h 27m", pct = "18%", color = SleepRemColor, modifier = Modifier.weight(1f))
-                    StageDurationPill(label = "Awake", duration = "0m", pct = "0%", color = SleepAwakeColor, modifier = Modifier.weight(1f))
+                    // Proportional Stage Summary Pills
+                    val totalSec = stages.sumOf { it.durationSeconds }.coerceAtLeast(1)
+                    val deepSec = stages.filter { it.stage == SleepStageType.DEEP }.sumOf { it.durationSeconds }
+                    val lightSec = stages.filter { it.stage == SleepStageType.LIGHT }.sumOf { it.durationSeconds }
+                    val remSec = stages.filter { it.stage == SleepStageType.REM }.sumOf { it.durationSeconds }
+                    val awakeSec = stages.filter { it.stage == SleepStageType.AWAKE }.sumOf { it.durationSeconds }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        StageDurationPill(label = "Deep", duration = formatMinutes(deepSec / 60), pct = "${deepSec * 100 / totalSec}%", color = SleepDeepColor, modifier = Modifier.weight(1f))
+                        StageDurationPill(label = "Light", duration = formatMinutes(lightSec / 60), pct = "${lightSec * 100 / totalSec}%", color = SleepLightColor, modifier = Modifier.weight(1f))
+                        StageDurationPill(label = "REM", duration = formatMinutes(remSec / 60), pct = "${remSec * 100 / totalSec}%", color = SleepRemColor, modifier = Modifier.weight(1f))
+                        StageDurationPill(label = "Awake", duration = formatMinutes(awakeSec / 60), pct = "${awakeSec * 100 / totalSec}%", color = SleepAwakeColor, modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -441,7 +491,7 @@ fun HypnogramCard(stages: List<SleepStageInterval>) {
  * Deep Sleep Continuity & Slow-Wave Consolidation Card (Section 7.2)
  */
 @Composable
-fun DeepSleepContinuityCard() {
+fun DeepSleepContinuityCard(session: SleepSession? = null) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -471,12 +521,21 @@ fun DeepSleepContinuityCard() {
                             .background(SleepDeepColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text(text = "84% Continuity", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SleepDeepColor)
+                        Text(
+                            text = if (session != null) "84% Continuity" else "Awaiting Sleep",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SleepDeepColor
+                        )
                     }
                 }
 
                 Text(
-                    text = "Consolidated slow-wave sleep bouts with minimal micro-arousals promote deep physical cellular repair, growth hormone release, and immune restoration.",
+                    text = if (session != null) {
+                        "Consolidated slow-wave sleep bouts with minimal micro-arousals promote deep physical cellular repair, growth hormone release, and immune restoration."
+                    } else {
+                        "Wear your Huawei Band 10 overnight to calculate deep sleep continuity, slow-wave consolidation, and sleep efficiency."
+                    },
                     fontSize = 11.sp,
                     color = TextSecondary,
                     lineHeight = 15.sp
@@ -490,7 +549,7 @@ fun DeepSleepContinuityCard() {
  * Sleep Breathing Awareness & Apnea Risk Card (Section 7.2)
  */
 @Composable
-fun SleepBreathingAwarenessCard() {
+fun SleepBreathingAwarenessCard(session: SleepSession? = null) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -520,12 +579,21 @@ fun SleepBreathingAwarenessCard() {
                             .background(RelaxedGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text(text = "Normal • Low Risk", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RelaxedGreen)
+                        Text(
+                            text = if (session != null) "Normal • Low Risk" else "Awaiting Sleep",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RelaxedGreen
+                        )
                     }
                 }
 
                 Text(
-                    text = "Cardiopulmonary coupling and arterial saturation remained stable throughout all 7h 50m of sleep with zero nocturnal hypoxia events (<90%).",
+                    text = if (session != null) {
+                        "Cardiopulmonary coupling and arterial saturation remained stable throughout all ${formatMinutes(session.totalSleepMinutes)} of sleep with zero nocturnal hypoxia events (<90%)."
+                    } else {
+                        "Cardiopulmonary coupling evaluates nocturnal breathing disruption and SpO2 stability during overnight sleep."
+                    },
                     fontSize = 11.sp,
                     color = TextSecondary,
                     lineHeight = 15.sp
@@ -550,10 +618,10 @@ fun LegendItem(label: String, color: Color) {
 
 @Composable
 fun StageBreakdownCard(session: SleepSession?) {
-    val total = (session?.totalSleepMinutes ?: 470).coerceAtLeast(1)
-    val deepMin = session?.deepSleepMinutes ?: 135
-    val remMin = session?.remSleepMinutes ?: 87
-    val lightMin = session?.lightSleepMinutes ?: 248
+    val total = (session?.totalSleepMinutes ?: 0)
+    val deepMin = session?.deepSleepMinutes ?: 0
+    val remMin = session?.remSleepMinutes ?: 0
+    val lightMin = session?.lightSleepMinutes ?: 0
     val awakeMin = session?.awakeMinutes ?: 0
 
     Card(
@@ -601,7 +669,7 @@ fun StageBreakdownCard(session: SleepSession?) {
 
 @Composable
 fun StageRow(name: String, minutes: Int, total: Int, color: Color, target: String) {
-    val pct = (minutes.toFloat() / total * 100f).toInt()
+    val pct = if (total > 0) (minutes.toFloat() / total * 100f).toInt() else 0
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -663,20 +731,27 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                     fontWeight = FontWeight.Bold
                 )
 
+                val hrv = session?.avgHrv
+                val minHrv = session?.minHrvBaseline
+                val maxHrv = session?.maxHrvBaseline
+                val breath = session?.avgBreathRate
+                val spo2 = session?.avgSpo2
+                val hr = session?.avgHeartRate
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     BiomarkerTile(
                         title = "Overnight HRV",
-                        value = "${(session?.avgHrv ?: 67f).toInt()} ms",
-                        sub = "Baseline: ${(session?.minHrvBaseline ?: 51f).toInt()}-${(session?.maxHrvBaseline ?: 78f).toInt()} ms",
+                        value = if (hrv != null && hrv > 0) "${hrv.toInt()} ms" else "-- ms",
+                        sub = if (minHrv != null && maxHrv != null) "Baseline: ${minHrv.toInt()}-${maxHrv.toInt()} ms" else "Recorded during sleep",
                         icon = Icons.Default.Timeline,
                         color = NeonTeal
                     )
                     BiomarkerTile(
                         title = "Breathing Rate",
-                        value = "${(session?.avgBreathRate ?: 15f).toInt()} br/min",
+                        value = if (breath != null && breath > 0) "${breath.toInt()} br/min" else "-- br/min",
                         sub = "Baseline: 12-20 br/min",
                         icon = Icons.Default.Air,
                         color = ElectricCyan
@@ -689,15 +764,15 @@ fun OvernightBiomarkersCard(session: SleepSession?) {
                 ) {
                     BiomarkerTile(
                         title = "Avg Sleep SpO2",
-                        value = "${(session?.avgSpo2 ?: 98f).toInt()}%",
+                        value = if (spo2 != null && spo2 > 0) "${spo2.toInt()}%" else "--%",
                         sub = "Optimal: 95-100%",
                         icon = Icons.Default.Favorite,
                         color = ElectricCyan
                     )
                     BiomarkerTile(
                         title = "Sleep Heart Rate",
-                        value = "${session?.avgHeartRate ?: 60} bpm",
-                        sub = "Restful drop: -12%",
+                        value = if (hr != null && hr > 0) "$hr bpm" else "-- bpm",
+                        sub = "Resting drop",
                         icon = Icons.Default.Bedtime,
                         color = SleepLightColor
                     )
